@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Robot Ops Dashboard Mock View</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Robot Operations and Testing Dashboard</p>
+          <h1>Mock Data Static View</h1>
+          <p class="hero-text">
+            使用仓库内的三份 mock JSON，展示 AMR 任务、设备状态和告警信息。
+            当前页面为纯静态原型，不依赖框架，不包含控制能力。
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-card">
+            <span class="meta-label">Data Mode</span>
+            <strong>Mock JSON Only</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Current Scope</span>
+            <strong>Read-only Dashboard</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Preview</span>
+            <strong>Serve from repo root</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="overview panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Overview</p>
+            <h2>摘要概览</h2>
+          </div>
+          <p id="generatedAt" class="section-meta">正在加载数据...</p>
+        </div>
+        <div id="summaryGrid" class="summary-grid"></div>
+      </section>
+
+      <main class="content-grid">
+        <section class="panel panel-wide">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">AMR Task List</p>
+              <h2>任务列表</h2>
+            </div>
+            <p id="tasksMeta" class="section-meta"></p>
+          </div>
+          <div id="tasksTable" class="table-wrap"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Device Status</p>
+              <h2>设备状态</h2>
+            </div>
+            <p id="devicesMeta" class="section-meta"></p>
+          </div>
+          <div id="deviceGrid" class="device-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Alerts</p>
+              <h2>告警列表</h2>
+            </div>
+            <p id="alertsMeta" class="section-meta"></p>
+          </div>
+          <div id="alertsList" class="alerts-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

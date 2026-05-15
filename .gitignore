@@ -1,0 +1,30 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Python tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment files
+.env
+.env.*
+.python-version
+
+# IDE and editor files
+.idea/
+.vscode/
+
+# Local tool metadata
+.agents/
+.codex/
+
+# OS files
+.DS_Store

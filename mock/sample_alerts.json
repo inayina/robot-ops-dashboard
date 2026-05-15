@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-05-16T09:00:00+08:00",
+  "source": "mock_rule_engine",
+  "data": [
+    {
+      "alert_id": "ALERT-20260516-001",
+      "level": "critical",
+      "category": "task",
+      "title": "AMR-02 任务阻塞并超时风险升高",
+      "description": "任务 TASK-20260516-002 已进入 blocked 状态，且已超过期望完成时间。",
+      "status": "open",
+      "source_type": "task_rule",
+      "source_ref": "TASK-20260516-002",
+      "related_robot_id": "AMR-02",
+      "related_task_id": "TASK-20260516-002",
+      "triggered_at": "2026-05-16T08:56:10+08:00",
+      "updated_at": "2026-05-16T09:00:00+08:00",
+      "suggested_action": "检查 AMR-02 的激光雷达与路径规划状态，确认是否需要人工介入恢复。",
+      "evidence": [
+        "task_status=blocked",
+        "blocked_reason=lidar_health_warning",
+        "last_event=path_replan_failed"
+      ],
+      "labels": ["amr", "task_timeout", "priority_urgent"]
+    },
+    {
+      "alert_id": "ALERT-20260516-002",
+      "level": "warning",
+      "category": "device",
+      "title": "AMR-02 激光雷达通信抖动",
+      "description": "AMR-02 的激光雷达帧率低于预期，且存在明显丢包。",
+      "status": "open",
+      "source_type": "device_rule",
+      "source_ref": "AMR-02-LIDAR",
+      "related_robot_id": "AMR-02",
+      "related_task_id": "TASK-20260516-002",
+      "triggered_at": "2026-05-16T08:54:30+08:00",
+      "updated_at": "2026-05-16T08:59:30+08:00",
+      "suggested_action": "检查雷达供电、网络链路和 micro-ROS 桥接状态。",
+      "evidence": [
+        "frame_rate_hz=4.2",
+        "expected_frame_rate_hz=10.0",
+        "packet_loss_pct=12.4"
+      ],
+      "labels": ["device", "sensor", "micro_ros"]
+    },
+    {
+      "alert_id": "ALERT-20260516-003",
+      "level": "info",
+      "category": "test",
+      "title": "V0.1 当前为 Mock 数据与最小后端骨架阶段",
+      "description": "当前仓库已具备静态 mock 页面和最小 FastAPI 后端骨架，但尚未接入真实上游接口，适合用于设计评审、接口对齐与本地联调准备。",
+      "status": "acknowledged",
+      "source_type": "project_stage",
+      "source_ref": null,
+      "related_robot_id": null,
+      "related_task_id": null,
+      "triggered_at": "2026-05-16T09:00:00+08:00",
+      "updated_at": "2026-05-16T09:00:00+08:00",
+      "suggested_action": "后续优先推进 amr_warehouse_navigation Mock WMS HTTP API 的只读接入。",
+      "evidence": [
+        "phase=V0.1",
+        "static_frontend_mock_page=true",
+        "backend_skeleton_implemented=true",
+        "real_upstream_integrations=false"
+      ],
+      "labels": ["project", "v0_1", "documentation"]
+    }
+  ]
+}

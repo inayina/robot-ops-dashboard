@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-05-16T09:00:00+08:00",
+  "source": "mock_mqtt_micro_ros",
+  "data": [
+    {
+      "device_id": "AMR-01-BMS",
+      "robot_id": "AMR-01",
+      "subsystem": "battery",
+      "device_type": "bms",
+      "transport": "mqtt",
+      "comm_status": "online",
+      "health_status": "healthy",
+      "firmware_version": "bms-1.4.2",
+      "last_seen_at": "2026-05-16T08:59:57+08:00",
+      "metrics": {
+        "battery_pct": 74,
+        "voltage_v": 51.3,
+        "current_a": 7.8,
+        "temperature_c": 31.5
+      },
+      "alarms": [],
+      "labels": ["future_mqtt", "battery", "robot_core"]
+    },
+    {
+      "device_id": "AMR-02-LIDAR",
+      "robot_id": "AMR-02",
+      "subsystem": "lidar",
+      "device_type": "laser_scanner",
+      "transport": "micro_ros",
+      "comm_status": "intermittent",
+      "health_status": "warning",
+      "firmware_version": "lidar-fw-2.1.0",
+      "last_seen_at": "2026-05-16T08:58:31+08:00",
+      "metrics": {
+        "frame_rate_hz": 4.2,
+        "expected_frame_rate_hz": 10.0,
+        "temperature_c": 45.8,
+        "packet_loss_pct": 12.4
+      },
+      "alarms": ["frame_drop", "packet_loss_high"],
+      "labels": ["future_micro_ros", "sensor", "warning"]
+    },
+    {
+      "device_id": "AMR-03-SAFETY-MCU",
+      "robot_id": "AMR-03",
+      "subsystem": "safety_controller",
+      "device_type": "mcu",
+      "transport": "micro_ros",
+      "comm_status": "online",
+      "health_status": "healthy",
+      "firmware_version": "safety-0.9.8",
+      "last_seen_at": "2026-05-16T08:59:52+08:00",
+      "metrics": {
+        "heartbeat_hz": 5.0,
+        "estop_state": "released",
+        "safety_loop_ok": true
+      },
+      "alarms": [],
+      "labels": ["future_micro_ros", "safety", "robot_core"]
+    },
+    {
+      "device_id": "AMR-02-CHASSIS",
+      "robot_id": "AMR-02",
+      "subsystem": "chassis_controller",
+      "device_type": "controller",
+      "transport": "mqtt",
+      "comm_status": "online",
+      "health_status": "critical",
+      "firmware_version": "chassis-3.2.5",
+      "last_seen_at": "2026-05-16T08:59:48+08:00",
+      "metrics": {
+        "motor_temp_c": 72.6,
+        "driver_fault_count": 3,
+        "bus_voltage_v": 47.1
+      },
+      "alarms": ["motor_overtemp_risk", "driver_fault_present"],
+      "labels": ["future_mqtt", "chassis", "critical"]
+    }
+  ]
+}
