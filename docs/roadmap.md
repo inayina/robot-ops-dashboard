@@ -27,20 +27,26 @@ V0.1 不引入前端框架，重点把项目定位、边界、数据契约、Moc
 
 优先级最高。
 
+Current：HTTP REST + WebSocket status stream。
+
 目标：
 
 - 优先对接 `amr_warehouse_navigation` 的 Mock WMS HTTP API
 - 拉通 AMR 任务列表、任务状态、异常任务和基础概览
 - 建立从上游原始字段到 Dashboard 统一字段的映射层
+- 提供 Dashboard Backend 到 Frontend 的只读 WebSocket 状态流
 
 关键成果：
 
 - HTTP 轮询策略
+- WebSocket `/ws/status` 状态推送
 - 任务状态归一化
 - 基础任务告警生成
 - 看板原型所需的只读查询接口
 
 ## V0.3 设备状态接入
+
+Future：`robot_status_api_bridge` / `motor_state` / `imu_state integration`。
 
 目标：
 

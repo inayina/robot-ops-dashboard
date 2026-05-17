@@ -59,6 +59,7 @@
 | 机器人编号 | `robot_id` | 任务归属机器人 |
 | 任务状态 | `source_status` | 保留上游原始状态 |
 | 归一化状态 | `status` | 用于页面统一展示 |
+| 任务进度 | `progress` | 优先使用上游 `progress` / `percent`；缺失时按 `status` 推导 |
 | 起点工位 | `pickup_station` | 任务起始位置 |
 | 终点工位 | `dropoff_station` | 任务目标位置 |
 | 更新时间 | `updated_at` | 用于新鲜度判断 |
@@ -77,6 +78,20 @@
 - `cancelled`
 
 这样后续不管上游如何命名，都能在 Dashboard 层维持稳定展示逻辑。
+
+当上游 Mock WMS 没有提供显式进度字段时，Dashboard backend 会按归一化状态生成展示进度：
+
+| `status` | `progress` |
+| --- | --- |
+| `queued` | `0` |
+| `dispatching` | `20` |
+| `running` | `50` |
+| `blocked` | `50` |
+| `completed` | `100` |
+| `failed` | `100` |
+| `cancelled` | `100` |
+
+该进度只用于看板展示，不代表 Dashboard 对任务执行链路有控制能力。
 
 ## 6. 数据拉取建议
 
@@ -126,3 +141,20 @@ V0.1 中，建议以 `mock/sample_amr_tasks.json` 作为联调占位数据。
 - 是否有机器人状态补充接口
 
 在这些信息未完全确认前，本仓库先以统一契约和 Mock 数据作为推进基线。
+
+## 10. 配置与运行
+
+- 在 Dashboard backend 中通过环境变量控制数据源：
+	- `ROBOT_OPS_TASK_SOURCE`：`mock_json`（默认）或 `amr_http`
+	- `AMR_API_BASE_URL`：上游 AMR Mock WMS 地址，默认 `http://127.0.0.1:8000`
+	- `AMR_HTTP_TIMEOUT_SECONDS`：上游请求超时秒数，默认 `3`
+
+示例：启动 Dashboard 并连接本地 AMR mock
+
+```bash
+export ROBOT_OPS_TASK_SOURCE=amr_http
+export AMR_API_BASE_URL=http://127.0.0.1:8000
+uvicorn backend.app.main:app --port 9000
+```
+
+注意：这是一个只读集成（read-only）。Dashboard 仅拉取并映射任务数据，不会下发任务或改变上游状态。

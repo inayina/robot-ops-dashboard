@@ -15,12 +15,14 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 - `GET /api/v0/device-status`
 - `GET /api/v0/alerts`
 - `GET /api/v0/ai-insights`
+- `WebSocket /ws/status`
 
 说明：
 
 - `V0.1` 仅为建议契约，不代表已实现
 - 本仓库当前阶段不提供控制类接口
 - 不提供 Nav2 控制、电机控制或任务下发能力
+- `/ws/status` 仅用于 Dashboard Backend 向 Frontend 推送只读状态快照，不替代 HTTP REST API
 
 ## 3. 通用响应结构
 
@@ -64,6 +66,24 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 ### 4.2 对应 Mock 文件
 
 - `mock/sample_amr_tasks.json`
+
+### 4.3 进度展示规则
+
+如果上游数据源提供 `progress` 或 `percent` 字段，Dashboard backend 应优先使用上游进度，并将其限制在 `0` 到 `100` 范围内。
+
+如果上游没有提供显式进度，Dashboard backend 可以按归一化任务状态推导展示进度：
+
+| `status` | `progress` |
+| --- | --- |
+| `queued` | `0` |
+| `dispatching` | `20` |
+| `running` | `50` |
+| `blocked` | `50` |
+| `completed` | `100` |
+| `failed` | `100` |
+| `cancelled` | `100` |
+
+该字段只用于只读看板展示，不表示 Dashboard 具备任务调度或机器人控制能力。
 
 ## 5. 设备状态对象 DeviceStatus
 
@@ -131,7 +151,46 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 | `generated_at` | string | 生成时间 |
 | `requires_human_review` | boolean | 是否需要人工确认 |
 
-## 8. 设计原则
+## 8. WebSocket 状态消息 DashboardStatus
+
+`/ws/status` 当前推送如下结构：
+
+```json
+{
+  "type": "dashboard_status",
+  "timestamp": "2026-05-18T10:00:00+00:00",
+  "tasks": [],
+  "robot": {
+    "status": "warning",
+    "source": "mock_mqtt_micro_ros",
+    "generated_at": "2026-05-16T09:00:00+08:00",
+    "devices": [],
+    "summary": {
+      "total": 0,
+      "online": 0,
+      "intermittent": 0,
+      "offline": 0,
+      "warning": 0,
+      "critical": 0
+    }
+  },
+  "motor": null,
+  "imu": null
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | string | 固定为 `dashboard_status` |
+| `timestamp` | string | 状态快照生成时间 |
+| `tasks` | array | Dashboard Task 列表，复用 `/api/tasks` 的映射结果 |
+| `robot` | object | 机器人状态聚合，当前由 mock device status 聚合得到 |
+| `motor` | object\|null | 预留字段，当前不接真实电机状态 |
+| `imu` | object\|null | 预留字段，当前不接真实 IMU 状态 |
+
+## 9. 设计原则
 
 统一契约需要坚持以下原则：
 
@@ -141,7 +200,7 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 4. AI 输出必须携带证据与置信度
 5. 所有告警对象都应能回溯到源对象
 
-## 9. 与项目边界的关系
+## 10. 与项目边界的关系
 
 本文档定义的是 Dashboard 的展示型数据契约，不代表本仓库承担以下职责：
 

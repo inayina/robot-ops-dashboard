@@ -1,7 +1,12 @@
+const API_BASE_URL = window.API_BASE_URL || "http://127.0.0.1:9000";
+const REFRESH_INTERVAL_MS = 3000;
+const WS_RECONNECT_DELAY_MS = 3000;
+const WS_STATUS_URL = window.WS_STATUS_URL || buildWebSocketUrl(API_BASE_URL, "/ws/status");
+
 const DATA_FILES = {
-  tasks: "../mock/sample_amr_tasks.json",
-  devices: "../mock/sample_device_status.json",
-  alerts: "../mock/sample_alerts.json",
+  tasks: `${API_BASE_URL}/api/tasks`,
+  devices: `${API_BASE_URL}/api/device-status`,
+  alerts: `${API_BASE_URL}/api/alerts`,
 };
 
 const taskStatusLabel = {
@@ -42,39 +47,223 @@ const rootNodes = {
   tasksTable: document.querySelector("#tasksTable"),
   deviceGrid: document.querySelector("#deviceGrid"),
   alertsList: document.querySelector("#alertsList"),
+  dataMode: document.querySelector("#dataMode"),
+  connectionMessage: document.querySelector("#connectionMessage"),
+  wsStatus: document.querySelector("#wsStatus"),
+  wsMessage: document.querySelector("#wsMessage"),
+};
+
+const cachedPayloads = {
+  tasks: null,
+  devices: null,
+  alerts: null,
+};
+
+let refreshInFlight = false;
+const websocketState = {
+  socket: null,
+  reconnectTimer: null,
+  connected: false,
+  lastMessageAt: null,
 };
 
 init();
+connectStatusWebSocket();
+window.setInterval(init, REFRESH_INTERVAL_MS);
 
 async function init() {
+  if (refreshInFlight) {
+    return;
+  }
+
+  refreshInFlight = true;
+
   try {
-    const [tasksPayload, devicesPayload, alertsPayload] = await Promise.all([
+    const [tasksResult, devicesResult, alertsResult] = await Promise.allSettled([
       fetchJson(DATA_FILES.tasks),
       fetchJson(DATA_FILES.devices),
       fetchJson(DATA_FILES.alerts),
     ]);
 
-    renderSummary(tasksPayload, devicesPayload, alertsPayload);
-    renderTasks(tasksPayload);
-    renderDevices(devicesPayload);
-    renderAlerts(alertsPayload);
-  } catch (error) {
-    renderError(error);
+    const failures = [
+      syncSection("tasks", tasksResult, renderTasks, rootNodes.tasksMeta, rootNodes.tasksTable, "任务"),
+      syncSection(
+        "devices",
+        devicesResult,
+        renderDevices,
+        rootNodes.devicesMeta,
+        rootNodes.deviceGrid,
+        "设备状态"
+      ),
+      syncSection("alerts", alertsResult, renderAlerts, rootNodes.alertsMeta, rootNodes.alertsList, "告警"),
+    ].filter(Boolean);
+
+    if (cachedPayloads.tasks && cachedPayloads.devices && cachedPayloads.alerts) {
+      renderSummary(cachedPayloads.tasks, cachedPayloads.devices, cachedPayloads.alerts, failures);
+    } else {
+      renderSummaryUnavailable(failures);
+    }
+
+    renderConnectionStatus(
+      failures.length === 0,
+      failures.length === 0
+        ? `Dashboard backend connected: ${API_BASE_URL} · tasks source: ${
+            cachedPayloads.tasks?.source || "-"
+          }`
+        : `Dashboard backend unavailable: ${truncateText(failures.join(" | "), 180)}`
+    );
+  } finally {
+    refreshInFlight = false;
   }
 }
 
 async function fetchJson(path) {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${path}: ${response.status}`);
+    throw new Error(await buildHttpError(response, path));
   }
   return response.json();
 }
 
-function renderSummary(tasksPayload, devicesPayload, alertsPayload) {
-  const tasks = tasksPayload.data;
-  const devices = devicesPayload.data;
-  const alerts = alertsPayload.data;
+async function buildHttpError(response, path) {
+  let detail = "";
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = await response.json();
+      detail =
+        payload?.detail?.detail ||
+        payload?.detail?.error_type ||
+        payload?.detail ||
+        payload?.message ||
+        "";
+    } catch (_error) {
+      detail = "";
+    }
+  } else {
+    try {
+      detail = (await response.text()).trim();
+    } catch (_error) {
+      detail = "";
+    }
+  }
+
+  return detail ? `Failed to fetch ${path}: ${response.status} ${detail}` : `Failed to fetch ${path}: ${response.status}`;
+}
+
+function syncSection(key, result, renderFn, metaNode, containerNode, label) {
+  if (result.status === "fulfilled") {
+    cachedPayloads[key] = result.value;
+    renderFn(result.value);
+    return "";
+  }
+
+  const errorMessage = normalizeError(result.reason);
+
+  if (cachedPayloads[key]) {
+    renderFn(cachedPayloads[key], {
+      stale: true,
+      errorMessage,
+    });
+    return `${label}: ${errorMessage}`;
+  }
+
+  metaNode.textContent = "unavailable";
+  containerNode.innerHTML = buildErrorState(`${label} 数据不可用：${errorMessage}`);
+  return `${label}: ${errorMessage}`;
+}
+
+function connectStatusWebSocket() {
+  if (!("WebSocket" in window)) {
+    renderWebSocketStatus(false, "WebSocket unavailable; HTTP polling fallback is active.");
+    return;
+  }
+
+  if (websocketState.reconnectTimer) {
+    window.clearTimeout(websocketState.reconnectTimer);
+    websocketState.reconnectTimer = null;
+  }
+
+  renderWebSocketStatus(false, `Connecting status stream: ${WS_STATUS_URL}`);
+
+  const socket = new WebSocket(WS_STATUS_URL);
+  websocketState.socket = socket;
+
+  socket.addEventListener("open", () => {
+    websocketState.connected = true;
+    renderWebSocketStatus(true, `Connected to status stream: ${WS_STATUS_URL}`);
+  });
+
+  socket.addEventListener("message", (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      handleStatusMessage(payload);
+    } catch (error) {
+      renderWebSocketStatus(false, `Invalid status stream message: ${normalizeError(error)}`);
+    }
+  });
+
+  socket.addEventListener("close", () => {
+    if (websocketState.socket !== socket) {
+      return;
+    }
+
+    websocketState.connected = false;
+    renderWebSocketStatus(false, "Status stream disconnected; HTTP polling fallback is active.");
+    websocketState.reconnectTimer = window.setTimeout(connectStatusWebSocket, WS_RECONNECT_DELAY_MS);
+  });
+
+  socket.addEventListener("error", () => {
+    if (websocketState.socket === socket) {
+      renderWebSocketStatus(false, "Status stream error; HTTP polling fallback is active.");
+    }
+  });
+}
+
+function handleStatusMessage(payload) {
+  if (!payload || payload.type !== "dashboard_status") {
+    return;
+  }
+
+  websocketState.lastMessageAt = payload.timestamp || new Date().toISOString();
+
+  const tasksPayload = {
+    generated_at: payload.timestamp,
+    source: "websocket:/ws/status",
+    data: Array.isArray(payload.tasks) ? payload.tasks : [],
+  };
+  cachedPayloads.tasks = tasksPayload;
+  renderTasks(tasksPayload, { realtime: true });
+
+  const robot = payload.robot || {};
+  const devicesPayload = {
+    generated_at: robot.generated_at || payload.timestamp,
+    source: robot.source || "websocket:/ws/status",
+    data: Array.isArray(robot.devices) ? robot.devices : [],
+  };
+  cachedPayloads.devices = devicesPayload;
+  renderDevices(devicesPayload, {
+    realtime: true,
+    robotStatus: robot.status,
+    errorMessage: robot.error,
+  });
+
+  if (cachedPayloads.alerts) {
+    renderSummary(cachedPayloads.tasks, cachedPayloads.devices, cachedPayloads.alerts);
+  }
+
+  if (robot.status === "disconnected") {
+    renderWebSocketStatus(false, `Status stream reports disconnected: ${truncateText(robot.error || "-", 140)}`);
+  } else {
+    renderWebSocketStatus(true, `Latest status stream update: ${formatDate(websocketState.lastMessageAt)}`);
+  }
+}
+
+function renderSummary(tasksPayload, devicesPayload, alertsPayload, failures = []) {
+  const tasks = Array.isArray(tasksPayload?.data) ? tasksPayload.data : [];
+  const devices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
+  const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
 
   const runningTasks = tasks.filter((task) =>
     ["queued", "dispatching", "running", "blocked"].includes(task.status)
@@ -87,7 +276,7 @@ function renderSummary(tasksPayload, devicesPayload, alertsPayload) {
     {
       label: "Active Tasks",
       value: runningTasks,
-      note: `${tasks.length} total tasks in mock feed`,
+      note: `${tasks.length} total tasks in dashboard feed`,
     },
     {
       label: "Blocked Tasks",
@@ -118,16 +307,33 @@ function renderSummary(tasksPayload, devicesPayload, alertsPayload) {
     )
     .join("");
 
-  rootNodes.generatedAt.textContent = [
+  const generatedSegments = [
     `Tasks: ${formatDate(tasksPayload.generated_at)}`,
     `Devices: ${formatDate(devicesPayload.generated_at)}`,
     `Alerts: ${formatDate(alertsPayload.generated_at)}`,
-  ].join("  |  ");
+  ];
+
+  if (failures.length) {
+    generatedSegments.push(`Refresh warning: ${truncateText(failures.join(" | "), 140)}`);
+  }
+
+  rootNodes.generatedAt.textContent = generatedSegments.join("  |  ");
 }
 
-function renderTasks(tasksPayload) {
-  const { data: tasks, source } = tasksPayload;
-  rootNodes.tasksMeta.textContent = `${tasks.length} items · source: ${source}`;
+function renderSummaryUnavailable(failures) {
+  rootNodes.generatedAt.textContent = failures.length
+    ? `Dashboard backend unavailable: ${truncateText(failures.join(" | "), 180)}`
+    : "正在等待 Dashboard backend 返回数据...";
+  rootNodes.summaryGrid.innerHTML = buildErrorState(
+    failures.length
+      ? `无法从 Dashboard backend 加载完整概览：${failures.join("；")}`
+      : "正在等待 Dashboard backend 返回首批数据。"
+  );
+}
+
+function renderTasks(tasksPayload, options = {}) {
+  const tasks = Array.isArray(tasksPayload?.data) ? tasksPayload.data : [];
+  rootNodes.tasksMeta.textContent = buildSectionMeta(tasks.length, tasksPayload?.source, options);
 
   if (!tasks.length) {
     rootNodes.tasksTable.innerHTML = buildEmptyState("当前没有可展示的任务数据。");
@@ -204,9 +410,9 @@ function renderTasks(tasksPayload) {
   `;
 }
 
-function renderDevices(devicesPayload) {
-  const { data: devices, source } = devicesPayload;
-  rootNodes.devicesMeta.textContent = `${devices.length} items · source: ${source}`;
+function renderDevices(devicesPayload, options = {}) {
+  const devices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
+  rootNodes.devicesMeta.textContent = buildSectionMeta(devices.length, devicesPayload?.source, options);
 
   if (!devices.length) {
     rootNodes.deviceGrid.innerHTML = buildEmptyState("当前没有可展示的设备状态数据。");
@@ -215,7 +421,7 @@ function renderDevices(devicesPayload) {
 
   rootNodes.deviceGrid.innerHTML = devices
     .map((device) => {
-      const metrics = Object.entries(device.metrics)
+      const metrics = Object.entries(device.metrics || {})
         .map(
           ([key, value]) => `
             <div class="metric-row">
@@ -226,7 +432,7 @@ function renderDevices(devicesPayload) {
         )
         .join("");
 
-      const alarms = device.alarms.length
+      const alarms = Array.isArray(device.alarms) && device.alarms.length
         ? device.alarms.map((alarm) => buildPill(alarm)).join("")
         : '<span class="muted">No active subsystem alarms</span>';
 
@@ -258,9 +464,9 @@ function renderDevices(devicesPayload) {
     .join("");
 }
 
-function renderAlerts(alertsPayload) {
-  const { data: alerts, source } = alertsPayload;
-  rootNodes.alertsMeta.textContent = `${alerts.length} items · source: ${source}`;
+function renderAlerts(alertsPayload, options = {}) {
+  const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
+  rootNodes.alertsMeta.textContent = buildSectionMeta(alerts.length, alertsPayload?.source, options);
 
   if (!alerts.length) {
     rootNodes.alertsList.innerHTML = buildEmptyState("当前没有可展示的告警数据。");
@@ -269,7 +475,7 @@ function renderAlerts(alertsPayload) {
 
   rootNodes.alertsList.innerHTML = alerts
     .map((alert) => {
-      const evidence = alert.evidence.length
+      const evidence = Array.isArray(alert.evidence) && alert.evidence.length
         ? alert.evidence
             .map(
               (item) => `
@@ -312,21 +518,59 @@ function renderAlerts(alertsPayload) {
     .join("");
 }
 
-function renderError(error) {
-  const message = `
-    <div class="error-state">
-      数据加载失败：${escapeHtml(error.message)}。<br />
-      请从仓库根目录启动静态服务后再访问 ` +
-    `<span class="mono">/frontend/</span>，例如：` +
-    `<span class="mono">python3 -m http.server 8000</span>。
-    </div>
-  `;
+function renderConnectionStatus(isOnline, message) {
+  if (rootNodes.dataMode) {
+    rootNodes.dataMode.textContent = isOnline
+      ? "Live HTTP / Read-only Monitoring / AMR Mock WMS Integration"
+      : "Disconnected";
+    rootNodes.dataMode.dataset.state = isOnline ? "online" : "offline";
+  }
 
-  rootNodes.generatedAt.textContent = "加载失败";
-  rootNodes.summaryGrid.innerHTML = message;
-  rootNodes.tasksTable.innerHTML = message;
-  rootNodes.deviceGrid.innerHTML = message;
-  rootNodes.alertsList.innerHTML = message;
+  if (rootNodes.connectionMessage) {
+    rootNodes.connectionMessage.textContent = message;
+  }
+}
+
+function buildSectionMeta(count, source, options = {}) {
+  const segments = [`${count} items`, `source: ${source || "-"}`];
+
+  if (options.realtime) {
+    segments.push("status stream");
+  }
+
+  if (options.robotStatus) {
+    segments.push(`robot: ${options.robotStatus}`);
+  }
+
+  if (options.stale) {
+    segments.push("stale snapshot");
+  }
+
+  if (options.errorMessage) {
+    segments.push(`refresh error: ${truncateText(options.errorMessage, 96)}`);
+  }
+
+  return segments.join(" · ");
+}
+
+function renderWebSocketStatus(isOnline, message) {
+  if (rootNodes.wsStatus) {
+    rootNodes.wsStatus.textContent = isOnline ? "Connected" : "Disconnected";
+    rootNodes.wsStatus.dataset.state = isOnline ? "online" : "offline";
+  }
+
+  if (rootNodes.wsMessage) {
+    rootNodes.wsMessage.textContent = message;
+  }
+}
+
+function buildWebSocketUrl(baseUrl, path) {
+  const url = new URL(baseUrl, window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = path;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 function buildBadge(type, label) {
@@ -339,6 +583,10 @@ function buildPill(label) {
 
 function buildEmptyState(message) {
   return `<div class="empty-state">${escapeHtml(message)}</div>`;
+}
+
+function buildErrorState(message) {
+  return `<div class="error-state">${escapeHtml(message)}</div>`;
 }
 
 function formatDate(value) {
@@ -359,6 +607,22 @@ function formatDate(value) {
     second: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+function normalizeError(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unknown error";
+}
+
+function truncateText(value, maxLength) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 3)}...`;
 }
 
 function escapeHtml(value) {

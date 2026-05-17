@@ -20,3 +20,12 @@ class MockEnvelope(BaseModel):
     generated_at: str = Field(description="Mock payload generation timestamp.")
     source: str = Field(description="Payload source description.")
     data: list[dict[str, Any]] = Field(description="Payload data list.")
+
+
+class DashboardStatusMessage(BaseModel):
+    type: str = Field(default="dashboard_status", description="WebSocket message type.")
+    timestamp: str = Field(description="Status snapshot timestamp.")
+    tasks: list[dict[str, Any]] = Field(description="Dashboard task list snapshot.")
+    robot: dict[str, Any] = Field(description="Robot status snapshot.")
+    motor: dict[str, Any] | None = Field(default=None, description="Reserved motor state snapshot.")
+    imu: dict[str, Any] | None = Field(default=None, description="Reserved IMU state snapshot.")

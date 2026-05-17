@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 APP_NAME = "robot-ops-dashboard-backend"
 APP_VERSION = "0.1.0"
@@ -20,3 +21,23 @@ MOCK_DATA_FILES = {
 CORS_ALLOW_ORIGINS = ["*"]
 CORS_ALLOW_METHODS = ["GET"]
 CORS_ALLOW_HEADERS = ["*"]
+
+# V0.2 AMR HTTP integration configuration
+# - ROBOT_OPS_TASK_SOURCE: which task source to use (mock_json | amr_http)
+# - AMR_API_BASE_URL: base URL for upstream AMR Mock WMS HTTP API
+# - AMR_HTTP_TIMEOUT_SECONDS: request timeout seconds for upstream calls
+# - DASHBOARD_WS_STATUS_INTERVAL_SECONDS: backend-to-frontend status push interval
+ROBOT_OPS_TASK_SOURCE = os.getenv("ROBOT_OPS_TASK_SOURCE", "mock_json")
+AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")
+try:
+    AMR_HTTP_TIMEOUT_SECONDS = int(os.getenv("AMR_HTTP_TIMEOUT_SECONDS", "3"))
+except ValueError:
+    AMR_HTTP_TIMEOUT_SECONDS = 3
+
+try:
+    DASHBOARD_WS_STATUS_INTERVAL_SECONDS = float(os.getenv("DASHBOARD_WS_STATUS_INTERVAL_SECONDS", "3"))
+except ValueError:
+    DASHBOARD_WS_STATUS_INTERVAL_SECONDS = 3.0
+
+if DASHBOARD_WS_STATUS_INTERVAL_SECONDS <= 0:
+    DASHBOARD_WS_STATUS_INTERVAL_SECONDS = 3.0

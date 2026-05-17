@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Robot Ops Dashboard Mock View</title>
+    <title>AMR Operations Dashboard</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,24 +11,32 @@
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Robot Operations and Testing Dashboard</p>
-          <h1>Mock Data Static View</h1>
+          <h1>AMR Operations Dashboard</h1>
           <p class="hero-text">
-            使用仓库内的三份 mock JSON，展示 AMR 任务、设备状态和告警信息。
-            当前页面为纯静态原型，不依赖框架，不包含控制能力。
+            通过 Dashboard Backend 读取 AMR Mock WMS HTTP API，将任务状态映射为统一运维视图。
+            当前页面仅用于只读监控展示，不提供任务下发或机器人控制能力。
           </p>
         </div>
         <div class="hero-meta">
           <div class="meta-card">
             <span class="meta-label">Data Mode</span>
-            <strong>Mock JSON Only</strong>
+            <strong id="dataMode" data-state="loading">Connecting...</strong>
+            <p id="connectionMessage" class="meta-note">
+              Waiting for Dashboard backend at http://127.0.0.1:9000
+            </p>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Status Stream</span>
+            <strong id="wsStatus" data-state="loading">Connecting...</strong>
+            <p id="wsMessage" class="meta-note">Waiting for /ws/status</p>
           </div>
           <div class="meta-card">
             <span class="meta-label">Current Scope</span>
-            <strong>Read-only Dashboard</strong>
+            <strong>Read-only Monitoring</strong>
           </div>
           <div class="meta-card">
-            <span class="meta-label">Preview</span>
-            <strong>Serve from repo root</strong>
+            <span class="meta-label">Integration</span>
+            <strong>AMR Mock WMS Integration</strong>
           </div>
         </div>
       </header>
