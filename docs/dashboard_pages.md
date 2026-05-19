@@ -36,6 +36,8 @@ Dashboard 页面规划服务于两个关键词：
 建议模块：
 
 - 任务列表
+- Mock WMS 任务创建表单
+- WMS 任务列表手动刷新
 - 任务状态筛选
 - 按机器人分组查看任务
 - 超时/阻塞任务高亮
@@ -44,6 +46,7 @@ Dashboard 页面规划服务于两个关键词：
 核心价值：
 
 - 这是 V0.2 最优先落地的页面
+- 当前任务创建仅通过 Dashboard backend 的 HTTP proxy 调用 AMR Mock WMS API，不直接控制 Nav2、电机或真实机器人
 
 ## 2.3 设备状态页 Devices
 
@@ -57,6 +60,7 @@ Dashboard 页面规划服务于两个关键词：
 - 电池状态
 - 通信状态
 - 传感器健康状态
+- MPU6050 / IMU 最新状态：online/offline、last_seen、accel、gyro、temperature、state
 - 安全模块状态
 - 最近离线事件
 

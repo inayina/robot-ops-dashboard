@@ -13,8 +13,8 @@
           <p class="eyebrow">Robot Operations and Testing Dashboard</p>
           <h1>AMR Operations Dashboard</h1>
           <p class="hero-text">
-            通过 Dashboard Backend 读取 AMR Mock WMS HTTP API，将任务状态映射为统一运维视图。
-            当前页面仅用于只读监控展示，不提供任务下发或机器人控制能力。
+            通过 Dashboard Backend 读取 AMR Mock WMS HTTP API 与本地 MQTT 状态 topic，将任务和设备状态映射为统一运维视图。
+            当前页面支持 Mock WMS 任务创建，不提供 Nav2、电机或真实机器人控制能力。
           </p>
         </div>
         <div class="hero-meta">
@@ -32,11 +32,11 @@
           </div>
           <div class="meta-card">
             <span class="meta-label">Current Scope</span>
-            <strong>Read-only Monitoring</strong>
+            <strong>Monitoring + Mock Task Create</strong>
           </div>
           <div class="meta-card">
             <span class="meta-label">Integration</span>
-            <strong>AMR Mock WMS Integration</strong>
+            <strong>AMR HTTP + MQTT Status</strong>
           </div>
         </div>
       </header>
@@ -50,6 +50,47 @@
           <p id="generatedAt" class="section-meta">正在加载数据...</p>
         </div>
         <div id="summaryGrid" class="summary-grid"></div>
+      </section>
+
+      <section class="panel wms-panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Mock WMS</p>
+            <h2>任务创建</h2>
+          </div>
+          <div class="wms-actions">
+            <button id="wmsRefreshButton" class="ghost-button" type="button">刷新</button>
+          </div>
+        </div>
+
+        <form id="wmsTaskForm" class="wms-form">
+          <label>
+            <span>Task Type</span>
+            <input id="wmsTaskType" name="task_type" type="text" value="transport" maxlength="64" />
+          </label>
+          <label>
+            <span>Pickup</span>
+            <select id="wmsPickup" name="pickup">
+              <option value="station_a">station_a</option>
+              <option value="station_b">station_b</option>
+              <option value="dock_a">dock_a</option>
+              <option value="start_zone" selected>start_zone</option>
+            </select>
+          </label>
+          <label>
+            <span>Dropoff</span>
+            <select id="wmsDropoff" name="dropoff">
+              <option value="station_a" selected>station_a</option>
+              <option value="station_b">station_b</option>
+              <option value="dock_a">dock_a</option>
+              <option value="start_zone">start_zone</option>
+            </select>
+          </label>
+          <button id="wmsSubmitButton" class="primary-button" type="submit">创建任务</button>
+        </form>
+
+        <p id="wmsTaskMessage" class="section-meta">等待 WMS 任务数据...</p>
+        <div id="wmsTasksTable" class="table-wrap compact-table"></div>
       </section>
 
       <main class="content-grid">
@@ -73,6 +114,17 @@
             <p id="devicesMeta" class="section-meta"></p>
           </div>
           <div id="deviceGrid" class="device-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">MPU6050 / IMU</p>
+              <h2>IMU 状态</h2>
+            </div>
+            <p id="imuMeta" class="section-meta"></p>
+          </div>
+          <div id="imuStatusPanel" class="imu-status-panel"></div>
         </section>
 
         <section class="panel">

@@ -4,26 +4,28 @@
 
 当前第一阶段优先对接 `amr_warehouse_navigation` 的 **Mock WMS HTTP API**。
 
-目标不是实现控制，而是先把 AMR 任务流的只读观察链路打通，为 Dashboard 提供：
+目标不是实现机器人控制，而是把 AMR 任务流观察链路和最小 Mock WMS task creation 链路打通，为 Dashboard 提供：
 
 - 任务列表
 - 任务状态
 - 任务异常
 - 机器人与任务关联关系
 - 面向总览页的任务统计
+- 面向本地演示的 Mock WMS 任务创建入口
 
 ## 2. 集成原则
 
-### 2.1 只读优先
+### 2.1 监控优先，Mock 任务创建保持显式
 
-第一阶段只考虑读取和展示，不考虑下发控制命令。
+第一阶段优先读取和展示。当前允许 Dashboard backend 通过 HTTP proxy 创建 AMR Mock WMS task，但该能力不等同于机器人控制。
 
 明确不做：
 
 - 不从本仓库直接控制 Nav2
 - 不从本仓库直接发起机器人动作
 - 不把 Dashboard 做成调度系统
-- 不承担完整 WMS 的业务编排、任务下发或工单管理职责
+- 不承担完整 WMS 的业务编排或工单管理职责
+- 不通过 MQTT 下发任务
 
 ### 2.2 先统一模型，再对接页面
 
@@ -42,6 +44,7 @@
 3. 任务生命周期关键时间点
 4. 任务与机器人关联关系
 5. 任务异常或阻塞原因
+6. 最小 Mock WMS task creation proxy
 
 如果上游还提供以下能力，则可进一步增强：
 
@@ -109,6 +112,39 @@
 
 这些信息后续可作为“数据源健康状态”的输入。
 
+## 6.1 Mock WMS Task Creation Proxy
+
+Dashboard backend 新增：
+
+- `GET /api/wms/tasks`：转发到 `GET {AMR_API_BASE_URL}/tasks`
+- `POST /api/wms/tasks`：接收 `task_type`、`pickup`、`dropoff`，转发到 `POST {AMR_API_BASE_URL}/tasks`
+
+上游 AMR Mock WMS 当前创建任务需要：
+
+```json
+{
+  "target_name": "station_a",
+  "task_name": "dashboard_transport_start_zone_to_station_a_20260519T120000Z"
+}
+```
+
+Dashboard 前端使用：
+
+```json
+{
+  "task_type": "transport",
+  "pickup": "start_zone",
+  "dropoff": "station_a"
+}
+```
+
+映射规则：
+
+- `dropoff` -> `target_name`
+- `task_type`、`pickup`、`dropoff` -> `task_name`
+
+该 proxy 不保存任务，不实现调度，不控制 Nav2、电机或真实机器人。
+
 ## 7. 告警生成建议
 
 基于 AMR HTTP 任务流，可以先做最基础的任务类告警：
@@ -157,4 +193,4 @@ export AMR_API_BASE_URL=http://127.0.0.1:8000
 uvicorn backend.app.main:app --port 9000
 ```
 
-注意：这是一个只读集成（read-only）。Dashboard 仅拉取并映射任务数据，不会下发任务或改变上游状态。
+注意：除 `POST /api/wms/tasks` 这个显式 Mock WMS task creation proxy 外，Dashboard 仍只拉取并映射任务数据；该 proxy 不直接控制 Nav2、电机或真实机器人。

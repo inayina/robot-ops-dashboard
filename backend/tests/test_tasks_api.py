@@ -12,8 +12,18 @@ async def _get(path: str) -> httpx.Response:
         return await client.get(path)
 
 
+async def _post(path: str, payload: dict) -> httpx.Response:
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(path, json=payload)
+
+
 def get(path: str) -> httpx.Response:
     return asyncio.run(_get(path))
+
+
+def post(path: str, payload: dict) -> httpx.Response:
+    return asyncio.run(_post(path, payload))
 
 
 def test_health_route_available():
@@ -84,6 +94,7 @@ def test_amr_http_mode_failure_returns_http_exception(monkeypatch):
 
 def test_status_websocket_route_and_message_contract():
     config.ROBOT_OPS_TASK_SOURCE = "mock_json"
+    main.mqtt_status_service.clear()
     websocket_routes = [route for route in main.app.routes if getattr(route, "path", None) == "/ws/status"]
 
     payload = main.build_dashboard_status_message().model_dump()
@@ -94,5 +105,63 @@ def test_status_websocket_route_and_message_contract():
     assert isinstance(payload["tasks"], list)
     assert payload["robot"]["status"] in {"healthy", "warning", "critical", "unknown"}
     assert isinstance(payload["robot"]["devices"], list)
+    assert "mqtt" in payload["robot"]
     assert payload["motor"] is None
     assert payload["imu"] is None
+
+
+def test_wms_tasks_proxy_list_with_fake_amr_response(monkeypatch):
+    class FakeAmrService:
+        def fetch_wms_tasks_payload(self):
+            return {
+                "count": 1,
+                "tasks": [
+                    {
+                        "id": 7,
+                        "task_name": "dashboard_transport_start_zone_to_station_a_20260519T120000Z",
+                        "target_name": "station_a",
+                        "status": "pending",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(main, "get_amr_service", lambda: FakeAmrService())
+
+    resp = get("/api/wms/tasks")
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["count"] == 1
+    assert body["tasks"][0]["target_name"] == "station_a"
+
+
+def test_wms_tasks_proxy_create_maps_dashboard_payload_to_amr(monkeypatch):
+    recorded_payload = {}
+
+    class FakeAmrService:
+        def create_wms_task(self, payload):
+            recorded_payload.update(payload)
+            return 201, {
+                "id": 8,
+                "task_name": payload["task_name"],
+                "target_name": payload["target_name"],
+                "status": "pending",
+            }
+
+    monkeypatch.setattr(main, "get_amr_service", lambda: FakeAmrService())
+
+    resp = post(
+        "/api/wms/tasks",
+        {
+            "task_type": "transport",
+            "pickup": "start_zone",
+            "dropoff": "station_a",
+        },
+    )
+    body = resp.json()
+
+    assert resp.status_code == 201
+    assert recorded_payload["target_name"] == "station_a"
+    assert recorded_payload["task_name"].startswith("dashboard_transport_start_zone_to_station_a_")
+    assert body["target_name"] == "station_a"
+    assert body["status"] == "pending"

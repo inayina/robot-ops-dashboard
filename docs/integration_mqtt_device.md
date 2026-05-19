@@ -11,6 +11,20 @@
 - 传感器与安全模块状态监控
 - 与任务流、告警流的关联分析
 
+## 1.1 当前最小实现
+
+当前仓库已实现最小 MQTT 只读接入，用于本地验证设备状态链路：
+
+- Backend 启动时连接 MQTT broker，默认 `mqtt://127.0.0.1:1883`
+- 订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
+- 将每个 topic 的最新消息缓存在 backend 进程内存中
+- 提供 `GET /api/robot/status` 返回最新缓存状态
+- 如果前端连接了 `/ws/status`，MQTT 新消息会触发新的 `dashboard_status` 快照推送
+- 前端 MPU6050 / IMU 区域复用 `/api/robot/status` 与 `/ws/status` 展示 `robot/imu` 最新状态
+- 提供 `scripts/mock_mqtt_motor_status_publisher.py` 模拟发布 `robot/motor/status`
+
+该实现仍属于 `read-only monitoring`，不发布控制指令，不控制 Nav2、电机或真实机器人，不做数据库持久化。
+
 ## 2. 适用范围
 
 本方案主要针对以下数据：
@@ -55,11 +69,19 @@
 - `motor_driver`
 - `wireless_bridge`
 
-## 5. MQTT 主题建议
+## 5. MQTT 主题
 
-当前先做规划，后续可根据 `ros2-robot-digital-twin` 实际实现调整。
+当前最小实现已订阅以下固定 topic：
+
+- `robot/state`
+- `robot/imu`
+- `robot/motor/status`
+- `robot/alarm`
+
+后续可根据 `ros2-robot-digital-twin` 实际实现扩展更细粒度的 topic。
 
 建议主题风格示例：
+
 
 - `robots/{robot_id}/battery/status`
 - `robots/{robot_id}/chassis/status`
@@ -69,8 +91,8 @@
 
 说明：
 
-- 这里只是建议主题规划，不代表真实主题已定稿
-- 真正实现时应以上游项目实际 topic 为准
+- 当前四个 `robot/...` topic 用于最小本地联调。
+- 扩展到多机器人或更多子系统时，应优先补充设计文档，再调整接口契约。
 
 ## 6. micro-ROS 状态承接建议
 
@@ -90,6 +112,15 @@ micro-ROS 侧更适合提供底层子系统细粒度状态，例如：
 - `online`：近期持续收到消息
 - `intermittent`：有消息但抖动明显或更新时间超阈值
 - `offline`：长时间未收到消息
+
+当前前端对 MPU6050 / IMU 的展示规则：
+
+- 数据来源为 MQTT `robot/imu` 最新缓存，HTTP 读取 `/api/robot/status`，实时更新复用 `/ws/status`
+- 展示字段包括 online/offline、last_seen、accel x/y/z、gyro x/y/z、temperature 与 state
+- 以 backend 缓存消息的 `received_at` 作为 `last_seen`
+- 超过 3 秒没有新 IMU 消息时显示 `stale`
+- 超过 10 秒没有新 IMU 消息时显示 `offline`
+- 该区域只读展示，不提供控制按钮，也不向 MQTT broker 发布消息
 
 这部分逻辑后续是设备告警的重要来源。
 

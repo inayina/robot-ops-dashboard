@@ -8,8 +8,8 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 
 | 数据源 | 上游项目/系统 | 传输方式 | 优先级 | 当前状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| AMR 任务流 | `amr_warehouse_navigation` Mock WMS API | HTTP | 最高 | 第一阶段优先接入 | 用于任务页、总览页、告警页 |
-| 机器人设备状态 | `ros2-robot-digital-twin` | MQTT | 高 | 后续预留 | 用于设备页、告警页 |
+| AMR 任务流 / Mock WMS task | `amr_warehouse_navigation` Mock WMS API | HTTP | 最高 | 已有任务读取与最小 task creation proxy | 用于任务页、总览页、告警页、本地演示 |
+| 机器人设备状态 | `ros2-robot-digital-twin` / 本地 MQTT mock | MQTT | 高 | 已有最小只读接入 | 用于设备页、告警页 |
 | 下位机状态 | `ros2-robot-digital-twin` / micro-ROS | micro-ROS 桥接 | 高 | 后续预留 | 用于底盘、传感器、安全模块状态 |
 | 测试执行结果 | 测试脚本/验证流水线 | 文件或 HTTP | 中 | 后续规划 | 用于测试验证页 |
 | AI 异常结果 | ML / LLM / YOLO 服务 | HTTP 或消息流 | 中 | 后续预留 | 用于 AI 扩展页 |
@@ -20,6 +20,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 当前阶段只聚焦一个主数据源：
 
 - `amr_warehouse_navigation` 的 Mock WMS HTTP API
+- Dashboard backend 通过 `GET /api/wms/tasks` / `POST /api/wms/tasks` 提供最小 HTTP proxy
 
 原因：
 
@@ -29,9 +30,9 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 
 ## 4. 第二阶段数据源
 
-当任务流稳定后，优先补充设备层可观测性：
+当任务流稳定后，优先补充设备层可观测性。当前已先实现最小 MQTT 只读链路：
 
-- MQTT 设备状态流
+- MQTT 设备状态流：订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
 - micro-ROS 下位机状态
 
 这两类数据会让 Dashboard 从“任务看板”升级为“系统运维看板”。
@@ -50,6 +51,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 建议策略：
 
 - 轮询拉取
+- 对 Mock WMS task creation 使用显式 HTTP proxy
 - 加入更新时间戳
 - 映射上游状态到统一状态
 - 异常请求记录成数据源健康状态
@@ -98,7 +100,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 
 因此：
 
-- 不负责生成 WMS 业务单据
+- 只提供最小 Mock WMS task creation proxy，不负责完整 WMS 业务单据
 - 不负责驱动 Nav2 执行
 - 不负责驱动电机
 - 不负责承载完整 AI 推理服务

@@ -23,11 +23,11 @@ V0.1 不引入前端框架，重点把项目定位、边界、数据契约、Moc
 - `mock/*.json` 示例数据
 - `backend/` 下的只读 API 最小实现
 
-## V0.2 AMR HTTP 只读接入
+## V0.2 AMR HTTP、Mock WMS Task Proxy 与最小 MQTT 只读接入
 
 优先级最高。
 
-Current：HTTP REST + WebSocket status stream。
+Current：HTTP REST + Mock WMS task proxy + WebSocket status stream + 最小 MQTT 状态缓存。
 
 目标：
 
@@ -35,22 +35,27 @@ Current：HTTP REST + WebSocket status stream。
 - 拉通 AMR 任务列表、任务状态、异常任务和基础概览
 - 建立从上游原始字段到 Dashboard 统一字段的映射层
 - 提供 Dashboard Backend 到 Frontend 的只读 WebSocket 状态流
+- 提供最小 Mock WMS task creation proxy，不控制 Nav2 或电机
+- 接入本地 MQTT broker 的四个状态 topic，用于验证设备状态链路
 
 关键成果：
 
 - HTTP 轮询策略
+- `GET /api/wms/tasks` / `POST /api/wms/tasks`
 - WebSocket `/ws/status` 状态推送
+- MQTT `robot/state` / `robot/imu` / `robot/motor/status` / `robot/alarm` 最新消息缓存
+- `GET /api/robot/status` 只读状态接口
 - 任务状态归一化
 - 基础任务告警生成
-- 看板原型所需的只读查询接口
+- 看板原型所需的查询接口和最小 Mock task 创建入口
 
 ## V0.3 设备状态接入
 
-Future：`robot_status_api_bridge` / `motor_state` / `imu_state integration`。
+Future：`robot_status_api_bridge` / micro-ROS mapping / 多子系统设备模型。
 
 目标：
 
-- 预留并逐步接入 `ros2-robot-digital-twin` 项目的 MQTT / micro-ROS 状态
+- 在最小 MQTT 接入基础上，继续扩展 `ros2-robot-digital-twin` 项目的 MQTT / micro-ROS 状态
 - 支持设备在线状态、通信状态、基础健康状态聚合
 
 关键成果：
@@ -103,6 +108,6 @@ Future：`robot_status_api_bridge` / `motor_state` / `imu_state integration`。
 
 适合对外说明为：
 
-1. 第一阶段先完成 AMR 任务数据接入与只读可视化设计
+1. 第一阶段先完成 AMR 任务数据接入、Mock WMS task proxy 与可视化设计
 2. 第二阶段补足设备状态与测试验证链路
 3. 第三阶段叠加 AI 辅助洞察能力

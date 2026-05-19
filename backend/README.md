@@ -1,4 +1,4 @@
-# Backend V0.1
+# Backend V0.2
 
 ## 目标
 
@@ -7,18 +7,21 @@
 当前版本只负责：
 
 - 读取 `mock/` 目录下的 JSON 文件
-- 通过只读 HTTP API 返回任务、设备状态和告警数据
+- 通过 HTTP API 返回任务、设备状态和告警数据
+- 作为 AMR Mock WMS `/tasks` 的最小 HTTP proxy，支持查询和创建 Mock WMS task
 - 通过只读 WebSocket 向前端推送 Dashboard 状态快照
+- 通过 MQTT 订阅机器人状态 topic，并在内存中缓存最新消息
 - 为后续本地静态前端或前端框架接入提供统一入口
 
 当前版本明确不做：
 
 - 不修改 `amr_warehouse_navigation`
-- 不接 MQTT
 - 不接数据库
 - 不接 ML / LLM / YOLO
 - 不直接控制 Nav2
 - 不直接控制电机
+- 不通过 MQTT 发布控制指令
+- 不做多机器人调度或复杂 WMS 逻辑
 - 不改动其他仓库
 
 ## 目录结构
@@ -36,9 +39,11 @@ backend/
 │   └── services/
 │       ├── __init__.py
 │       ├── amr_http_service.py
+│       ├── mqtt_robot_status.py
 │       ├── mock_data_service.py
 │       └── task_mapper.py
 └── tests/
+    ├── test_mqtt_robot_status.py
     ├── test_task_mapper.py
     └── test_tasks_api.py
 ```
@@ -74,6 +79,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 9000 --reload
 ```bash
 curl --noproxy '*' http://127.0.0.1:9000/health
 curl --noproxy '*' http://127.0.0.1:9000/api/tasks
+curl --noproxy '*' http://127.0.0.1:9000/api/robot/status
+curl --noproxy '*' http://127.0.0.1:9000/api/wms/tasks
 ```
 
 启动后默认访问地址：
@@ -128,12 +135,60 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 
 `/api/tasks` 在 `amr_http` 模式下会请求上游 `http://127.0.0.1:8000/tasks`，并将原始任务映射为 Dashboard Task 契约后返回。
 
+### WMS task proxy
+
+Dashboard backend 提供最小 Mock WMS 任务创建 proxy：
+
+```bash
+curl --noproxy '*' http://127.0.0.1:9000/api/wms/tasks | python3 -m json.tool
+```
+
+```bash
+curl --noproxy '*' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data '{"task_type":"transport","pickup":"start_zone","dropoff":"station_a"}' \
+  http://127.0.0.1:9000/api/wms/tasks | python3 -m json.tool
+```
+
+说明：
+
+- `GET /api/wms/tasks` 转发到上游 `GET /tasks`。
+- `POST /api/wms/tasks` 接收 `task_type`、`pickup`、`dropoff`，并转为上游当前接受的 `target_name` 与 `task_name`。
+- 该 proxy 不写数据库，不通过 MQTT 下发任务，不控制 Nav2 或电机。
+
+### MQTT 状态接入
+
+Backend 启动时会尝试连接 MQTT broker：
+
+- 默认地址：`mqtt://127.0.0.1:1883`
+- 覆盖方式：`MQTT_BROKER_URL=mqtt://127.0.0.1:1883`
+- 订阅 topic：`robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
+
+启动本地 broker 后，可以用仓库内 mock publisher 模拟电机状态：
+
+```bash
+source .venv/bin/activate
+python3 scripts/mock_mqtt_motor_status_publisher.py --interval 1
+```
+
+验证最新缓存：
+
+```bash
+curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
+```
+
+说明：该链路只订阅和展示状态，不向 MQTT broker 发布控制命令，不写数据库。
+
 ## 接口列表
 
 - `GET /health`
 - `GET /api/tasks`
 - `GET /api/device-status`
 - `GET /api/alerts`
+- `GET /api/robot/status`
+- `GET /api/wms/tasks`
+- `POST /api/wms/tasks`
 - `WebSocket /ws/status`
 
 ## 接口说明
@@ -149,7 +204,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 - 默认读取 `mock/sample_amr_tasks.json`（`ROBOT_OPS_TASK_SOURCE=mock_json`）
 - 可切换到 AMR HTTP 只读模式：设置 `ROBOT_OPS_TASK_SOURCE=amr_http`，并配置 `AMR_API_BASE_URL`。
 
-注意：V0.2 为只读集成，Dashboard 不会向上游下发任务或修改任务状态。
+注意：`/api/tasks` 仍是 Dashboard Task 契约读取接口；Mock WMS task 创建请使用 `/api/wms/tasks`。
 
 ### `GET /api/device-status`
 
@@ -163,14 +218,52 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 
 - `mock/sample_alerts.json`
 
+### `GET /api/robot/status`
+
+返回 backend 内存中缓存的最新 MQTT 机器人状态：
+
+- `connection`：MQTT broker 连接状态
+- `topics`：每个订阅 topic 的最新消息，未收到时为 `null`
+- `robot.state`：来自 `robot/state`
+- `robot.imu`：来自 `robot/imu`
+- `robot.motor_status`：来自 `robot/motor/status`
+- `robot.alarm`：来自 `robot/alarm`
+
+### `GET /api/wms/tasks`
+
+转发到 AMR Mock WMS API 的 `GET /tasks`，返回上游任务列表响应。
+
+### `POST /api/wms/tasks`
+
+接收前端任务参数：
+
+```json
+{
+  "task_type": "transport",
+  "pickup": "start_zone",
+  "dropoff": "station_a"
+}
+```
+
+转发到 AMR Mock WMS API 的 `POST /tasks`：
+
+```json
+{
+  "target_name": "station_a",
+  "task_name": "dashboard_transport_start_zone_to_station_a_20260519T120000Z"
+}
+```
+
+返回 AMR API 的原始响应和状态码。
+
 ### `WebSocket /ws/status`
 
 推送 Dashboard 只读状态快照：
 
 - `tasks` 复用 `/api/tasks` 的数据源配置与映射逻辑
-- `robot` 当前由 `mock/sample_device_status.json` 聚合得到
-- `motor` 当前固定为 `null`
-- `imu` 当前固定为 `null`
+- `robot` 由 `mock/sample_device_status.json` 与 MQTT 最新设备状态聚合得到
+- `motor` 来自 MQTT `robot/motor/status` 最新缓存，未收到时为 `null`
+- `imu` 来自 MQTT `robot/imu` 最新缓存，未收到时为 `null`
 
 示例消息：
 
@@ -179,13 +272,18 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
   "type": "dashboard_status",
   "timestamp": "2026-05-18T10:00:00+00:00",
   "tasks": [],
-  "robot": {},
-  "motor": null,
+  "robot": {
+    "mqtt": {}
+  },
+  "motor": {
+    "robot_id": "amr-001",
+    "status": "online"
+  },
   "imu": null
 }
 ```
 
-注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend，不连接 AMR API、ROS 2、MQTT、ESP32 或真实硬件。
+注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend。MQTT 只作为只读状态输入，不连接 ROS 2、ESP32 或真实硬件控制面。
 
 ## 错误处理
 
@@ -195,6 +293,8 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 - Mock JSON 内容解析失败
 - 上游 AMR HTTP 请求失败 / 超时 / 返回非 200
 - 上游任务映射失败或返回结构不符合 Dashboard 契约
+- AMR Mock WMS task proxy 创建失败时，返回 `amr_wms_proxy_error`
+- MQTT broker 未启动或暂时断开时，`/api/robot/status` 返回连接状态，不影响其它只读接口启动
 
 错误返回会包含：
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- 新增最小 MQTT 只读接入：连接默认 broker `mqtt://127.0.0.1:1883`，订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
+- 新增 `GET /api/robot/status`，返回 backend 内存中的 MQTT 最新缓存状态
+- `/ws/status` 在 MQTT 新消息到达时推送新的 `dashboard_status` 快照
+- 新增 `scripts/mock_mqtt_motor_status_publisher.py` 用于模拟发布 `robot/motor/status`
+- 更新 README 与 MQTT/WebSocket/API 文档，明确该链路仍为只读监控，不发布控制指令
+- 前端新增 MPU6050 / IMU 状态区域，复用 `/api/robot/status` 与 `/ws/status` 展示 MQTT `robot/imu` 最新状态，并按 3 秒 stale、10 秒 offline 判断 freshness
+- 新增最小 Mock WMS task proxy：`GET /api/wms/tasks`、`POST /api/wms/tasks`
+- 前端新增 Mock WMS 任务创建表单和任务列表手动刷新
+- 新增 `docs/wms_task_proxy_design.md`，明确 WMS task proxy 不做 Nav2、电机、MQTT 控制或数据库持久化
+- 新增 `scripts/start_dashboard_api_stack.sh`，一键启动 AMR API、Dashboard backend 和 frontend，不自动跑任务
+- `start_dashboard_api_stack.sh --with-amr-visualization` 可额外启动 AMR Gazebo/RViz/Nav2 和 HTTP executor loop，用于观察 Dashboard 创建任务后的执行过程
+
 ## v0.1.0 - 2026-05-18
 
 - 添加后端 FastAPI 应用以读取 AMR Mock WMS HTTP API（backend/app）
@@ -34,4 +48,3 @@ git push origin --tags
 ```
 
 ---
-

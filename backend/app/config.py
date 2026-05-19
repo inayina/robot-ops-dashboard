@@ -19,7 +19,7 @@ MOCK_DATA_FILES = {
 }
 
 CORS_ALLOW_ORIGINS = ["*"]
-CORS_ALLOW_METHODS = ["GET"]
+CORS_ALLOW_METHODS = ["GET", "POST", "OPTIONS"]
 CORS_ALLOW_HEADERS = ["*"]
 
 # V0.2 AMR HTTP integration configuration
@@ -27,12 +27,29 @@ CORS_ALLOW_HEADERS = ["*"]
 # - AMR_API_BASE_URL: base URL for upstream AMR Mock WMS HTTP API
 # - AMR_HTTP_TIMEOUT_SECONDS: request timeout seconds for upstream calls
 # - DASHBOARD_WS_STATUS_INTERVAL_SECONDS: backend-to-frontend status push interval
+# - MQTT_BROKER_URL: local MQTT broker used for read-only robot telemetry
+# - MQTT_KEEPALIVE_SECONDS: MQTT client keepalive interval
 ROBOT_OPS_TASK_SOURCE = os.getenv("ROBOT_OPS_TASK_SOURCE", "mock_json")
 AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")
+MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "mqtt://127.0.0.1:1883")
+MQTT_TOPICS = (
+    "robot/state",
+    "robot/imu",
+    "robot/motor/status",
+    "robot/alarm",
+)
 try:
     AMR_HTTP_TIMEOUT_SECONDS = int(os.getenv("AMR_HTTP_TIMEOUT_SECONDS", "3"))
 except ValueError:
     AMR_HTTP_TIMEOUT_SECONDS = 3
+
+try:
+    MQTT_KEEPALIVE_SECONDS = int(os.getenv("MQTT_KEEPALIVE_SECONDS", "60"))
+except ValueError:
+    MQTT_KEEPALIVE_SECONDS = 60
+
+if MQTT_KEEPALIVE_SECONDS <= 0:
+    MQTT_KEEPALIVE_SECONDS = 60
 
 try:
     DASHBOARD_WS_STATUS_INTERVAL_SECONDS = float(os.getenv("DASHBOARD_WS_STATUS_INTERVAL_SECONDS", "3"))

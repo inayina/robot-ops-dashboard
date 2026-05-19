@@ -170,6 +170,10 @@ h2 {
   padding: 24px;
 }
 
+.wms-panel {
+  margin-top: 20px;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -181,6 +185,88 @@ h2 {
 .section-meta {
   margin: 0;
   font-size: 0.92rem;
+}
+
+.section-meta[data-state="error"] {
+  color: var(--rose);
+}
+
+.section-meta[data-state="ok"] {
+  color: var(--muted);
+}
+
+.wms-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.wms-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.wms-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wms-form input,
+.wms-form select {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 246, 0.95);
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: 0;
+  padding: 9px 11px;
+}
+
+.primary-button,
+.ghost-button {
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+  padding: 9px 14px;
+}
+
+.primary-button {
+  background: var(--accent);
+  color: #fffdf8;
+}
+
+.ghost-button {
+  background: rgba(255, 251, 246, 0.88);
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.compact-table {
+  margin-top: 12px;
+}
+
+.compact-table table {
+  min-width: 720px;
 }
 
 .summary-grid {
@@ -217,7 +303,7 @@ h2 {
 }
 
 .panel-wide {
-  grid-row: span 2;
+  grid-row: span 3;
 }
 
 .table-wrap {
@@ -254,6 +340,7 @@ th {
 
 td strong,
 .device-card h3,
+.imu-card h3,
 .alert-card h3 {
   font-size: 1rem;
 }
@@ -299,7 +386,8 @@ td strong,
 
 .badge.blocked,
 .badge.warning,
-.badge.intermittent {
+.badge.intermittent,
+.badge.stale {
   background: var(--amber-soft);
   color: var(--amber);
 }
@@ -318,6 +406,7 @@ td strong,
 }
 
 .badge.queued,
+.badge.pending,
 .badge.dispatching,
 .badge.open,
 .badge.acknowledged,
@@ -355,12 +444,14 @@ td strong,
 }
 
 .device-grid,
+.imu-status-panel,
 .alerts-list {
   display: grid;
   gap: 14px;
 }
 
 .device-card,
+.imu-card,
 .alert-card {
   padding: 18px;
   border-radius: var(--radius-md);
@@ -377,11 +468,13 @@ td strong,
 }
 
 .device-card h3,
+.imu-card h3,
 .alert-card h3 {
   margin-bottom: 6px;
 }
 
 .metrics-list,
+.imu-metrics,
 .evidence-list {
   display: grid;
   gap: 8px;
@@ -389,6 +482,7 @@ td strong,
 }
 
 .metric-row,
+.imu-metric-row,
 .evidence-item {
   display: flex;
   justify-content: space-between;
@@ -399,8 +493,25 @@ td strong,
 }
 
 .metric-row span:first-child,
+.imu-metric-row span:first-child,
 .evidence-item span:first-child {
   color: var(--muted);
+}
+
+.imu-metric-row strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.imu-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.error-text {
+  color: var(--rose);
 }
 
 .empty-state,
@@ -454,5 +565,13 @@ td strong,
   .device-header,
   .alert-header {
     flex-direction: column;
+  }
+
+  .wms-form {
+    grid-template-columns: 1fr;
+  }
+
+  .wms-actions {
+    justify-content: flex-start;
   }
 }

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,5 +27,22 @@ class DashboardStatusMessage(BaseModel):
     timestamp: str = Field(description="Status snapshot timestamp.")
     tasks: list[dict[str, Any]] = Field(description="Dashboard task list snapshot.")
     robot: dict[str, Any] = Field(description="Robot status snapshot.")
-    motor: dict[str, Any] | None = Field(default=None, description="Reserved motor state snapshot.")
-    imu: dict[str, Any] | None = Field(default=None, description="Reserved IMU state snapshot.")
+    motor: dict[str, Any] | None = Field(default=None, description="Latest MQTT motor state snapshot.")
+    imu: dict[str, Any] | None = Field(default=None, description="Latest MQTT IMU state snapshot.")
+
+
+class RobotStatusResponse(BaseModel):
+    generated_at: str = Field(description="Robot status response generation timestamp.")
+    source: str = Field(description="Robot telemetry source description.")
+    connection: dict[str, Any] = Field(description="MQTT connection state.")
+    topics: dict[str, dict[str, Any] | None] = Field(description="Latest cached MQTT message by topic.")
+    robot: dict[str, Any] = Field(description="Latest normalized robot status assembled from MQTT topics.")
+
+
+TaskPointName = Literal["station_a", "station_b", "dock_a", "start_zone"]
+
+
+class WmsTaskCreateRequest(BaseModel):
+    task_type: str = Field(default="transport", min_length=1, max_length=64)
+    pickup: TaskPointName = Field(description="Pickup point selected by the dashboard form.")
+    dropoff: TaskPointName = Field(description="Dropoff point forwarded to AMR Mock WMS as target_name.")

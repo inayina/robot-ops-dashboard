@@ -8,21 +8,25 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 
 ## 2. 接口风格
 
-建议采用只读查询接口，面向 Dashboard 展示层输出：
+建议优先采用只读查询接口，面向 Dashboard 展示层输出；当前仅对 Mock WMS task creation 增加最小 HTTP proxy：
 
 - `GET /api/v0/summary`
 - `GET /api/v0/tasks`
 - `GET /api/v0/device-status`
 - `GET /api/v0/alerts`
+- `GET /api/robot/status`
+- `GET /api/wms/tasks`
+- `POST /api/wms/tasks`
 - `GET /api/v0/ai-insights`
 - `WebSocket /ws/status`
 
 说明：
 
 - `V0.1` 仅为建议契约，不代表已实现
-- 本仓库当前阶段不提供控制类接口
-- 不提供 Nav2 控制、电机控制或任务下发能力
+- 本仓库当前阶段不提供 Nav2 控制、电机控制或真实机器人控制接口
+- `POST /api/wms/tasks` 仅用于创建上游 AMR Mock WMS task，不承担多机器人调度或完整 WMS 逻辑
 - `/ws/status` 仅用于 Dashboard Backend 向 Frontend 推送只读状态快照，不替代 HTTP REST API
+- `/api/robot/status` 为最小 MQTT 只读状态接口，只返回 backend 内存中缓存的最新消息，不提供控制能力
 
 ## 3. 通用响应结构
 
@@ -151,9 +155,46 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 | `generated_at` | string | 生成时间 |
 | `requires_human_review` | boolean | 是否需要人工确认 |
 
-## 8. WebSocket 状态消息 DashboardStatus
+## 8. WMS Task Proxy
 
-`/ws/status` 当前推送如下结构：
+`GET /api/wms/tasks` 转发到 AMR Mock WMS API 的 `GET /tasks`，返回上游任务列表响应。
+
+`POST /api/wms/tasks` 接收 Dashboard 前端任务参数：
+
+```json
+{
+  "task_type": "transport",
+  "pickup": "start_zone",
+  "dropoff": "station_a"
+}
+```
+
+Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
+
+```json
+{
+  "target_name": "station_a",
+  "task_name": "dashboard_transport_start_zone_to_station_a_20260519T120000Z"
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `task_type` | string | 前端任务类型，默认 `transport` |
+| `pickup` | string | 前端选择的起点，当前用于生成 `task_name` 与展示 |
+| `dropoff` | string | 前端选择的终点，映射为上游 `target_name` |
+
+说明：
+
+- 当前可选点位：`station_a`、`station_b`、`dock_a`、`start_zone`。
+- 如果上游 AMR Mock WMS 不接受某个 `target_name`，Dashboard 返回上游错误。
+- 该接口不写数据库，不通过 MQTT 下发任务，不控制 Nav2 或电机。
+
+## 9. WebSocket 状态消息 DashboardStatus
+
+`/ws/status` 当前推送如下结构。`motor` 与 `imu` 来自 MQTT 最新缓存，尚未收到对应 topic 时为 `null`：
 
 ```json
 {
@@ -174,7 +215,10 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
       "critical": 0
     }
   },
-  "motor": null,
+  "motor": {
+    "robot_id": "amr-001",
+    "status": "online"
+  },
   "imu": null
 }
 ```
@@ -186,21 +230,73 @@ V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据
 | `type` | string | 固定为 `dashboard_status` |
 | `timestamp` | string | 状态快照生成时间 |
 | `tasks` | array | Dashboard Task 列表，复用 `/api/tasks` 的映射结果 |
-| `robot` | object | 机器人状态聚合，当前由 mock device status 聚合得到 |
-| `motor` | object\|null | 预留字段，当前不接真实电机状态 |
-| `imu` | object\|null | 预留字段，当前不接真实 IMU 状态 |
+| `robot` | object | 机器人状态聚合，当前由 mock device status 与 MQTT 最新设备状态聚合得到 |
+| `motor` | object\|null | MQTT `robot/motor/status` 最新 payload |
+| `imu` | object\|null | MQTT `robot/imu` 最新 payload |
 
-## 9. 设计原则
+前端 MPU6050 / IMU 区域会同时读取顶层 `imu` 和 `robot.mqtt.topics["robot/imu"]`。其中 `received_at` 用于展示 `last_seen` 并计算 freshness：超过 3 秒显示 `stale`，超过 10 秒显示 `offline`。
+
+## 9.1 MQTT RobotStatus
+
+`GET /api/robot/status` 返回 backend 内存中缓存的最新 MQTT 状态。
+
+```json
+{
+  "generated_at": "2026-05-19T10:00:00+00:00",
+  "source": "mqtt:mqtt://127.0.0.1:1883",
+  "connection": {
+    "status": "connected",
+    "broker_url": "mqtt://127.0.0.1:1883",
+    "error": null,
+    "last_connected_at": "2026-05-19T09:59:59+00:00",
+    "last_disconnected_at": null,
+    "last_message_at": "2026-05-19T10:00:00+00:00"
+  },
+  "topics": {
+    "robot/state": null,
+    "robot/imu": null,
+    "robot/motor/status": {
+      "topic": "robot/motor/status",
+      "received_at": "2026-05-19T10:00:00+00:00",
+      "payload": {
+        "robot_id": "amr-001",
+        "status": "online"
+      },
+      "payload_raw": "{\"robot_id\":\"amr-001\",\"status\":\"online\"}"
+    },
+    "robot/alarm": null
+  },
+  "robot": {
+    "state": null,
+    "imu": null,
+    "motor_status": {
+      "robot_id": "amr-001",
+      "status": "online"
+    },
+    "alarm": null,
+    "devices": []
+  }
+}
+```
+
+说明：
+
+- 当前订阅 topic 固定为 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`。
+- 该接口只读，不写数据库，不向 MQTT broker 发布控制命令。
+- broker 未连接时，`connection.status` 会显示 `disconnected` 或 `connecting`，各 topic 可为 `null`。
+- 前端 IMU 区域复用 `topics["robot/imu"].received_at` 作为 `last_seen`，并从 `robot.imu` 或该 topic 的 `payload` 读取 accel x/y/z、gyro x/y/z、temperature 与 state。
+
+## 10. 设计原则
 
 统一契约需要坚持以下原则：
 
-1. 优先只读，不设计控制接口
+1. 状态数据优先只读，Mock WMS task creation 必须保持显式 HTTP proxy
 2. 统一模型优先于上游原始字段
 3. 原始状态需要保留 `source_status`
 4. AI 输出必须携带证据与置信度
 5. 所有告警对象都应能回溯到源对象
 
-## 10. 与项目边界的关系
+## 11. 与项目边界的关系
 
 本文档定义的是 Dashboard 的展示型数据契约，不代表本仓库承担以下职责：
 

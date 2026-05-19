@@ -1,7 +1,8 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,15 +21,91 @@ from .config import (
     DEVICE_STATUS_FILE,
     TASKS_FILE,
 )
-from .schemas import DashboardStatusMessage, ErrorResponse, HealthResponse, MockEnvelope
+from .schemas import (
+    DashboardStatusMessage,
+    ErrorResponse,
+    HealthResponse,
+    MockEnvelope,
+    RobotStatusResponse,
+    WmsTaskCreateRequest,
+)
 from .services.mock_data_service import MockDataError, MockDataService
 from .services.amr_http_service import AmrHttpService, AmrHttpError
+from .services.mqtt_robot_status import RobotMqttStatusService
 from .services import task_mapper
+
+mock_data_service = MockDataService()
+mqtt_status_service = RobotMqttStatusService(
+    broker_url=config.MQTT_BROKER_URL,
+    topics=config.MQTT_TOPICS,
+    keepalive_seconds=config.MQTT_KEEPALIVE_SECONDS,
+)
+
+
+class StatusWebSocketHub:
+    def __init__(self) -> None:
+        self._clients: dict[WebSocket, asyncio.Lock] = {}
+        self._clients_lock = asyncio.Lock()
+
+    async def add(self, websocket: WebSocket) -> None:
+        async with self._clients_lock:
+            self._clients[websocket] = asyncio.Lock()
+
+    async def remove(self, websocket: WebSocket) -> None:
+        async with self._clients_lock:
+            self._clients.pop(websocket, None)
+
+    async def send(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
+        async with self._clients_lock:
+            send_lock = self._clients.get(websocket)
+
+        if send_lock is None:
+            return
+
+        async with send_lock:
+            await websocket.send_json(payload)
+
+    async def broadcast(self, payload: dict[str, Any]) -> None:
+        async with self._clients_lock:
+            clients = list(self._clients.keys())
+
+        disconnected: list[WebSocket] = []
+        for websocket in clients:
+            try:
+                await self.send(websocket, payload)
+            except Exception:
+                disconnected.append(websocket)
+
+        for websocket in disconnected:
+            await self.remove(websocket)
+
+    async def has_clients(self) -> bool:
+        async with self._clients_lock:
+            return bool(self._clients)
+
+
+status_websocket_hub = StatusWebSocketHub()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    loop = asyncio.get_running_loop()
+
+    def schedule_status_broadcast(_message: dict[str, Any]) -> None:
+        asyncio.run_coroutine_threadsafe(broadcast_dashboard_status(), loop)
+
+    mqtt_status_service.start(on_message=schedule_status_broadcast)
+    try:
+        yield
+    finally:
+        mqtt_status_service.stop()
+
 
 app = FastAPI(
     title=APP_NAME,
     description=APP_DESCRIPTION,
     version=APP_VERSION,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -38,8 +115,6 @@ app.add_middleware(
     allow_methods=CORS_ALLOW_METHODS,
     allow_headers=CORS_ALLOW_HEADERS,
 )
-
-mock_data_service = MockDataService()
 
 
 @app.exception_handler(MockDataError)
@@ -71,6 +146,40 @@ def raise_api_error(status_code: int, error_type: str, detail: str, path: str | 
             path=str(path),
         ).model_dump(),
     )
+
+
+def raise_amr_proxy_error(exc: AmrHttpError, action: str) -> None:
+    status_code = getattr(exc, "status_code", None) or 502
+    raise_api_error(
+        status_code=status_code,
+        error_type="amr_wms_proxy_error",
+        detail=f"{action}: {exc}",
+        path=config.AMR_API_BASE_URL,
+    )
+
+
+def build_wms_create_payload(request: WmsTaskCreateRequest) -> dict[str, Any]:
+    task_type = request.task_type.strip()
+    if not task_type:
+        raise_api_error(
+            status_code=400,
+            error_type="invalid_wms_task",
+            detail="task_type must not be blank.",
+            path="/api/wms/tasks",
+        )
+
+    safe_task_type = "".join(
+        char if char.isalnum() or char in {"_", "-"} else "_"
+        for char in task_type.lower()
+    ).strip("_")
+    safe_task_type = safe_task_type or "task"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    task_name = f"dashboard_{safe_task_type}_{request.pickup}_to_{request.dropoff}_{timestamp}"
+
+    return {
+        "target_name": request.dropoff,
+        "task_name": task_name,
+    }
 
 
 def load_mock_envelope(path: Path) -> MockEnvelope:
@@ -180,15 +289,29 @@ def summarize_robot_status(devices_envelope: MockEnvelope) -> dict[str, Any]:
     }
 
 
+def build_robot_status_response() -> RobotStatusResponse:
+    return RobotStatusResponse(**mqtt_status_service.build_status())
+
+
 def build_dashboard_status_message() -> DashboardStatusMessage:
     tasks_envelope = load_tasks_envelope()
     devices_envelope = load_mock_envelope(DEVICE_STATUS_FILE)
+    mqtt_status = build_robot_status_response()
+    mqtt_devices = mqtt_status.robot.get("devices", [])
+    merged_devices_envelope = MockEnvelope(
+        generated_at=utc_now_iso(),
+        source=f"{devices_envelope.source}+{mqtt_status.source}",
+        data=[*devices_envelope.data, *mqtt_devices],
+    )
+    robot = summarize_robot_status(merged_devices_envelope)
+    robot["mqtt"] = mqtt_status.model_dump()
+
     return DashboardStatusMessage(
         timestamp=utc_now_iso(),
         tasks=tasks_envelope.data,
-        robot=summarize_robot_status(devices_envelope),
-        motor=None,
-        imu=None,
+        robot=robot,
+        motor=mqtt_status.robot.get("motor_status"),
+        imu=mqtt_status.robot.get("imu"),
     )
 
 
@@ -245,23 +368,64 @@ async def get_alerts() -> MockEnvelope:
     return load_mock_envelope(ALERTS_FILE)
 
 
+@app.get("/api/robot/status", response_model=RobotStatusResponse)
+async def get_robot_status() -> RobotStatusResponse:
+    return build_robot_status_response()
+
+
+@app.get("/api/wms/tasks")
+async def get_wms_tasks() -> Any:
+    try:
+        return get_amr_service().fetch_wms_tasks_payload()
+    except AmrHttpError as exc:
+        raise_amr_proxy_error(exc, "Failed to fetch AMR WMS tasks")
+
+
+@app.post("/api/wms/tasks")
+async def create_wms_task(request: WmsTaskCreateRequest) -> JSONResponse:
+    upstream_payload = build_wms_create_payload(request)
+
+    try:
+        status_code, response_payload = get_amr_service().create_wms_task(upstream_payload)
+    except AmrHttpError as exc:
+        raise_amr_proxy_error(exc, "Failed to create AMR WMS task")
+
+    return JSONResponse(status_code=status_code, content=response_payload)
+
+
+async def broadcast_dashboard_status() -> None:
+    if not await status_websocket_hub.has_clients():
+        return
+
+    try:
+        message = build_dashboard_status_message()
+    except Exception as exc:
+        message = build_dashboard_status_error_message(exc)
+
+    await status_websocket_hub.broadcast(message.model_dump())
+
+
 @app.websocket("/ws/status")
 async def websocket_status(websocket: WebSocket) -> None:
     await websocket.accept()
+    await status_websocket_hub.add(websocket)
 
-    while True:
-        try:
-            message = build_dashboard_status_message()
-        except Exception as exc:
-            message = build_dashboard_status_error_message(exc)
+    try:
+        while True:
+            try:
+                message = build_dashboard_status_message()
+            except Exception as exc:
+                message = build_dashboard_status_error_message(exc)
 
-        try:
-            await websocket.send_json(message.model_dump())
-            await asyncio.wait_for(
-                websocket.receive_text(),
-                timeout=config.DASHBOARD_WS_STATUS_INTERVAL_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            continue
-        except WebSocketDisconnect:
-            break
+            try:
+                await status_websocket_hub.send(websocket, message.model_dump())
+                await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=config.DASHBOARD_WS_STATUS_INTERVAL_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                continue
+            except WebSocketDisconnect:
+                break
+    finally:
+        await status_websocket_hub.remove(websocket)
