@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AMR Operations Dashboard</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260520-motor-loop" />
   </head>
   <body>
     <div class="page-shell">
@@ -14,7 +14,7 @@
           <h1>AMR Operations Dashboard</h1>
           <p class="hero-text">
             通过 Dashboard Backend 读取 AMR Mock WMS HTTP API 与本地 MQTT 状态 topic，将任务和设备状态映射为统一运维视图。
-            当前页面支持 Mock WMS 任务创建，不提供 Nav2、电机或真实机器人控制能力。
+            当前页面支持 Mock WMS 任务创建，以及通过 backend HTTP API 下发低频电机控制命令。
           </p>
         </div>
         <div class="hero-meta">
@@ -32,11 +32,11 @@
           </div>
           <div class="meta-card">
             <span class="meta-label">Current Scope</span>
-            <strong>Monitoring + Mock Task Create</strong>
+            <strong>Monitoring + Motor Control</strong>
           </div>
           <div class="meta-card">
             <span class="meta-label">Integration</span>
-            <strong>AMR HTTP + MQTT Status</strong>
+            <strong>AMR HTTP + MQTT Status/Cmd</strong>
           </div>
         </div>
       </header>
@@ -93,30 +93,102 @@
         <div id="wmsTasksTable" class="table-wrap compact-table"></div>
       </section>
 
-      <main class="content-grid">
-        <section class="panel panel-wide">
+      <main class="dashboard-grid">
+        <section class="panel dashboard-card system-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">AMR Task List</p>
-              <h2>任务列表</h2>
+              <p class="section-kicker">System Health</p>
+              <h2>系统健康</h2>
             </div>
-            <p id="tasksMeta" class="section-meta"></p>
+            <p id="systemMeta" class="section-meta">waiting for device status</p>
           </div>
-          <div id="tasksTable" class="table-wrap"></div>
+          <div class="status-card-body">
+            <div class="status-title-row">
+              <div>
+                <strong id="systemStatusLabel" class="stable-status-label">Unknown</strong>
+                <p id="systemSource" class="subnote mono">source: -</p>
+              </div>
+              <span id="systemStatusDot" class="status-dot offline"></span>
+            </div>
+            <div class="metric-grid fixed-metric-grid">
+              <div class="metric-tile">
+                <span>Total</span>
+                <strong id="systemTotalDevices" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Online</span>
+                <strong id="systemOnlineDevices" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Warning</span>
+                <strong id="systemWarningDevices" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Critical</span>
+                <strong id="systemCriticalDevices" class="numeric-fixed">--</strong>
+              </div>
+            </div>
+            <div class="stable-row">
+              <span>Last update</span>
+              <strong id="systemLastUpdate" class="mono stable-time">--.-s ago</strong>
+            </div>
+          </div>
         </section>
 
-        <section class="panel">
+        <section class="panel dashboard-card task-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Device Status</p>
-              <h2>设备状态</h2>
+              <p class="section-kicker">AMR Task Status</p>
+              <h2>任务状态</h2>
             </div>
-            <p id="devicesMeta" class="section-meta"></p>
+            <p id="tasksMeta" class="section-meta">waiting for tasks</p>
           </div>
-          <div id="deviceGrid" class="device-grid"></div>
+          <div class="status-card-body">
+            <div class="metric-grid fixed-metric-grid">
+              <div class="metric-tile">
+                <span>Active</span>
+                <strong id="taskActiveCount" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Blocked</span>
+                <strong id="taskBlockedCount" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Completed</span>
+                <strong id="taskCompletedCount" class="numeric-fixed">--</strong>
+              </div>
+              <div class="metric-tile">
+                <span>Total</span>
+                <strong id="taskTotalCount" class="numeric-fixed">--</strong>
+              </div>
+            </div>
+            <div class="task-current">
+              <div class="stable-row">
+                <span>Current task</span>
+                <strong id="taskCurrentId" class="mono text-fixed">-</strong>
+              </div>
+              <div class="stable-row">
+                <span>Status</span>
+                <strong id="taskCurrentStatus" class="text-fixed">-</strong>
+              </div>
+              <div class="stable-row">
+                <span>Route</span>
+                <strong id="taskCurrentRoute" class="mono text-fixed">-</strong>
+              </div>
+              <div class="progress stable-progress">
+                <div class="progress-label-row">
+                  <span>Progress</span>
+                  <strong id="taskProgressValue" class="numeric-fixed">--%</strong>
+                </div>
+                <div class="progress-track">
+                  <div id="taskProgressFill" class="progress-fill" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section class="panel">
+        <section class="panel dashboard-card imu-card-shell">
           <div class="section-head">
             <div>
               <p class="section-kicker">MPU6050 / IMU</p>
@@ -124,22 +196,270 @@
             </div>
             <p id="imuMeta" class="section-meta"></p>
           </div>
-          <div id="imuStatusPanel" class="imu-status-panel"></div>
+          <div id="imuStatusPanel" class="imu-status-panel">
+            <article class="imu-card imu-card-visual">
+              <div class="imu-status-top">
+                <div>
+                  <h3>IMU Status</h3>
+                  <p class="subnote">Last update: <span id="imuLastUpdateAgo" class="mono stable-time">--.-s</span> ago</p>
+                </div>
+                <div id="imuFreshness" class="imu-freshness offline">
+                  <span id="imuStatusDot" class="status-dot offline"></span>
+                  <strong id="imuStatusLabel">Offline</strong>
+                </div>
+              </div>
+              <div class="imu-source-grid">
+                <div class="imu-info-tile">
+                  <span>source</span>
+                  <strong id="imuSource">-</strong>
+                </div>
+                <div class="imu-info-tile">
+                  <span>ros_topic</span>
+                  <strong id="imuRosTopic">-</strong>
+                </div>
+                <div class="imu-info-tile">
+                  <span>mqtt_topic</span>
+                  <strong id="imuMqttTopic">robot/imu</strong>
+                </div>
+                <div class="imu-info-tile">
+                  <span>last_message_at</span>
+                  <strong id="imuLastMessageAt" class="stable-date">-</strong>
+                </div>
+              </div>
+              <div class="imu-visual-grid">
+                <div class="attitude-stage" aria-label="IMU attitude preview">
+                  <div id="imuAttitudeCube" class="attitude-cube">
+                    <span class="cube-face front">IMU</span>
+                    <span class="cube-face top"></span>
+                    <span class="cube-face side"></span>
+                  </div>
+                </div>
+                <div class="attitude-panel">
+                  <div class="attitude-heading">
+                    <strong>Roll / Pitch / Yaw</strong>
+                    <span id="imuAttitudeSource">waiting</span>
+                  </div>
+                  <div class="attitude-bars">
+                    <div class="attitude-axis">
+                      <div class="attitude-axis-label">
+                        <span>ROLL</span>
+                        <strong id="imuRollValue" class="angle-value">--.-°</strong>
+                      </div>
+                      <div class="attitude-bar">
+                        <span class="attitude-zero"></span>
+                        <span id="imuRollMarker" class="attitude-marker" style="left: 50%"></span>
+                      </div>
+                    </div>
+                    <div class="attitude-axis">
+                      <div class="attitude-axis-label">
+                        <span>PITCH</span>
+                        <strong id="imuPitchValue" class="angle-value">--.-°</strong>
+                      </div>
+                      <div class="attitude-bar">
+                        <span class="attitude-zero"></span>
+                        <span id="imuPitchMarker" class="attitude-marker" style="left: 50%"></span>
+                      </div>
+                    </div>
+                    <div class="attitude-axis">
+                      <div class="attitude-axis-label">
+                        <span>YAW</span>
+                        <strong id="imuYawValue" class="angle-value">--.-°</strong>
+                      </div>
+                      <div class="attitude-bar">
+                        <span class="attitude-zero"></span>
+                        <span id="imuYawMarker" class="attitude-marker" style="left: 50%"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="imu-trend">
+                <div class="attitude-heading">
+                  <strong>Recent attitude</strong>
+                  <span id="imuTrendSampleCount">0/30 samples</span>
+                </div>
+                <canvas id="imuTrendCanvas" class="imu-trend-canvas" width="520" height="120"></canvas>
+              </div>
+              <div class="imu-metrics">
+                <div class="imu-metric-row">
+                  <span>accel x/y/z</span>
+                  <strong id="imuAccelValue" class="mono text-fixed">- / - / -</strong>
+                </div>
+                <div class="imu-metric-row">
+                  <span>gyro x/y/z</span>
+                  <strong id="imuGyroValue" class="mono text-fixed">- / - / -</strong>
+                </div>
+                <div class="imu-metric-row">
+                  <span>temperature</span>
+                  <strong id="imuTemperatureValue" class="mono text-fixed">-</strong>
+                </div>
+                <div class="imu-metric-row">
+                  <span>state</span>
+                  <strong id="imuStateValue" class="mono text-fixed">offline</strong>
+                </div>
+              </div>
+              <p id="imuErrorNote" class="imu-note error-text stable-note"></p>
+            </article>
+          </div>
         </section>
 
-        <section class="panel">
+        <section class="panel dashboard-card motor-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Alerts</p>
-              <h2>告警列表</h2>
+              <p class="section-kicker">Motor / Encoder</p>
+              <h2>电机状态</h2>
             </div>
-            <p id="alertsMeta" class="section-meta"></p>
+            <p id="motorMeta" class="section-meta">waiting for robot/motor/status</p>
           </div>
-          <div id="alertsList" class="alerts-list"></div>
+          <div class="status-card-body">
+            <div class="status-title-row">
+              <div>
+                <strong id="motorStatusLabel" class="stable-status-label">Offline</strong>
+                <p id="motorSource" class="subnote mono">source: -</p>
+              </div>
+              <span id="motorStatusDot" class="status-dot offline"></span>
+            </div>
+            <div class="imu-source-grid">
+              <div class="imu-info-tile">
+                <span>mqtt_topic</span>
+                <strong id="motorMqttTopic">robot/motor/status</strong>
+              </div>
+              <div class="imu-info-tile">
+                <span>last_message_at</span>
+                <strong id="motorLastMessageAt" class="stable-date">-</strong>
+              </div>
+            </div>
+            <form id="motorCommandForm" class="motor-command-form">
+              <label class="motor-command-toggle">
+                <span>enable</span>
+                <input id="motorEnableSwitch" name="enabled" type="checkbox" checked />
+              </label>
+              <label>
+                <span>target_rpm</span>
+                <input id="motorTargetRpmInput" name="target_rpm" type="number" step="1" value="120" />
+              </label>
+              <label>
+                <span>max_pwm</span>
+                <input id="motorMaxPwmInput" name="max_pwm" type="number" step="0.01" min="0" max="1" value="0.25" />
+              </label>
+              <label>
+                <span>timeout_ms</span>
+                <input id="motorTimeoutInput" name="timeout_ms" type="number" step="50" min="100" value="800" />
+              </label>
+              <div class="motor-command-actions">
+                <button id="motorApplyButton" class="primary-button" type="submit">Apply</button>
+                <button id="motorStopButton" class="ghost-button" type="button">Stop</button>
+              </div>
+            </form>
+            <p id="motorCommandMessage" class="section-meta">等待下发控制命令...</p>
+            <div class="motor-bench-grid">
+              <div class="motor-primary-row">
+                <div class="motor-bench-tile">
+                  <span>measured_rpm</span>
+                  <strong id="motorMeasuredRpm" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>target_rpm</span>
+                  <strong id="motorTargetRpm" class="motor-number-value">-----</strong>
+                </div>
+              </div>
+              <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>error_rpm</span>
+                  <strong id="motorErrorRpm" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>pwm</span>
+                  <strong id="motorPwmValue" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>enabled</span>
+                  <strong id="motorEnabledValue" class="text-fixed">-</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>closed_loop</span>
+                  <strong id="motorClosedLoopValue" class="text-fixed">-</strong>
+                </div>
+              </div>
+              <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>fault</span>
+                  <strong id="motorFaultValue" class="text-fixed">-</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>source</span>
+                  <strong id="motorCommandSource" class="text-fixed">-</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>max_pwm</span>
+                  <strong id="motorMaxPwmValue" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>timeout_ms</span>
+                  <strong id="motorTimeoutMsValue" class="motor-number-value">-----</strong>
+                </div>
+              </div>
+              <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>timeout / stop / fault</span>
+                  <strong id="motorSafetyFlags" class="text-fixed">- / - / -</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>loop</span>
+                  <strong id="motorLoop" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile motor-bench-wide">
+                  <span>motor_state</span>
+                  <strong id="motorStateJsonValue" class="mono text-fixed">-</strong>
+                </div>
+              </div>
+              <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>bench_enabled</span>
+                  <strong id="motorBenchEnabled" class="text-fixed">-</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>safety_mode</span>
+                  <strong id="motorSafetyMode" class="text-fixed">-</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>target_ticks_per_sec</span>
+                  <strong id="motorTargetTicks" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>measured_ticks_per_sec</span>
+                  <strong id="motorMeasuredTicks" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>encoder_count</span>
+                  <strong id="motorEncoderCount" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>invalid_transitions</span>
+                  <strong id="motorInvalidTransitions" class="motor-number-value">-----</strong>
+                </div>
+              </div>
+              <div class="stable-row">
+                <span>State</span>
+                <strong id="motorStateValue" class="mono text-fixed">offline</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel dashboard-card event-card">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Event Stream</p>
+              <h2>事件流</h2>
+            </div>
+            <p id="eventStreamMeta" class="section-meta">latest 10 status events</p>
+          </div>
+          <ol id="eventStreamList" class="event-stream-list" aria-live="polite"></ol>
         </section>
       </main>
     </div>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=20260520-motor-loop"></script>
   </body>
 </html>

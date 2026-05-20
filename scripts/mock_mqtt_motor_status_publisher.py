@@ -29,23 +29,51 @@ def parse_broker_url(broker_url: str) -> tuple[str, int]:
 
 def build_motor_status(robot_id: str, seq: int) -> dict[str, object]:
     phase = seq / 6
-    left_rpm = round(1180 + math.sin(phase) * 80 + random.uniform(-8, 8), 1)
-    right_rpm = round(1170 + math.cos(phase) * 70 + random.uniform(-8, 8), 1)
-    current_a = round(3.2 + abs(math.sin(phase)) * 0.7 + random.uniform(-0.08, 0.08), 2)
-    temperature_c = round(41.5 + abs(math.sin(phase / 2)) * 3.5 + random.uniform(-0.2, 0.2), 1)
+    target_rpm = round(120 + math.sin(phase / 2) * 80, 3)
+    actual_rpm = round(target_rpm + math.sin(phase) * 12 + random.uniform(-2, 2), 3)
+    error_rpm = round(target_rpm - actual_rpm, 3)
+    pwm_duty = round(min(1.0, max(0.0, abs(target_rpm) / 300.0)), 3)
+    timestamp = utc_now_iso()
+    motor_state = {
+        "target_rpm": target_rpm,
+        "actual_rpm": actual_rpm,
+        "error_rpm": error_rpm,
+        "pwm_duty": pwm_duty,
+        "direction": 1 if target_rpm > 0 else -1 if target_rpm < 0 else 0,
+        "control_enabled": True,
+        "saturated": False,
+        "timeout": False,
+        "estop": False,
+        "fault": False,
+        "source": "target_rpm",
+        "loop": seq * 20,
+    }
 
     return {
+        "schema_version": 1,
         "robot_id": robot_id,
-        "status": "online",
-        "motor_id": "drive_base",
-        "left_rpm": left_rpm,
-        "right_rpm": right_rpm,
-        "voltage_v": 24.2,
-        "current_a": current_a,
-        "temperature_c": temperature_c,
-        "fault": None,
+        "status": "ok",
+        "actual_rpm": actual_rpm,
+        "motor_state": json.dumps(motor_state, separators=(",", ":")),
+        "freshness": {
+            "actual_rpm": {
+                "topic": "/motor/actual_rpm",
+                "status": "ok",
+                "age_sec": 0.0,
+                "last_received_time": timestamp,
+                "last_header_stamp": None,
+            },
+            "motor_state": {
+                "topic": "/motor/state",
+                "status": "ok",
+                "age_sec": 0.0,
+                "last_received_time": timestamp,
+                "last_header_stamp": None,
+            },
+        },
+        "last_update_time": timestamp,
         "seq": seq,
-        "timestamp": utc_now_iso(),
+        "timestamp": timestamp,
     }
 
 

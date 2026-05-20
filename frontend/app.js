@@ -1,8 +1,9 @@
 const API_BASE_URL = window.API_BASE_URL || "http://127.0.0.1:9000";
 const REFRESH_INTERVAL_MS = 3000;
 const WS_RECONNECT_DELAY_MS = 3000;
-const IMU_STALE_AFTER_MS = 3000;
-const IMU_OFFLINE_AFTER_MS = 10000;
+const IMU_STALE_AFTER_MS = 2000;
+const IMU_OFFLINE_AFTER_MS = 5000;
+const IMU_HISTORY_LIMIT = 30;
 const WS_STATUS_URL = window.WS_STATUS_URL || buildWebSocketUrl(API_BASE_URL, "/ws/status");
 
 const DATA_FILES = {
@@ -11,6 +12,7 @@ const DATA_FILES = {
   devices: `${API_BASE_URL}/api/device-status`,
   alerts: `${API_BASE_URL}/api/alerts`,
   robotStatus: `${API_BASE_URL}/api/robot/status`,
+  motorCommand: `${API_BASE_URL}/api/robot/motor/cmd`,
 };
 
 const WMS_TASK_POINTS = ["station_a", "station_b", "dock_a", "start_zone"];
@@ -48,13 +50,84 @@ const rootNodes = {
   generatedAt: document.querySelector("#generatedAt"),
   summaryGrid: document.querySelector("#summaryGrid"),
   tasksMeta: document.querySelector("#tasksMeta"),
-  devicesMeta: document.querySelector("#devicesMeta"),
-  alertsMeta: document.querySelector("#alertsMeta"),
-  tasksTable: document.querySelector("#tasksTable"),
-  deviceGrid: document.querySelector("#deviceGrid"),
+  systemMeta: document.querySelector("#systemMeta"),
+  systemStatusLabel: document.querySelector("#systemStatusLabel"),
+  systemStatusDot: document.querySelector("#systemStatusDot"),
+  systemSource: document.querySelector("#systemSource"),
+  systemTotalDevices: document.querySelector("#systemTotalDevices"),
+  systemOnlineDevices: document.querySelector("#systemOnlineDevices"),
+  systemWarningDevices: document.querySelector("#systemWarningDevices"),
+  systemCriticalDevices: document.querySelector("#systemCriticalDevices"),
+  systemLastUpdate: document.querySelector("#systemLastUpdate"),
+  taskActiveCount: document.querySelector("#taskActiveCount"),
+  taskBlockedCount: document.querySelector("#taskBlockedCount"),
+  taskCompletedCount: document.querySelector("#taskCompletedCount"),
+  taskTotalCount: document.querySelector("#taskTotalCount"),
+  taskCurrentId: document.querySelector("#taskCurrentId"),
+  taskCurrentStatus: document.querySelector("#taskCurrentStatus"),
+  taskCurrentRoute: document.querySelector("#taskCurrentRoute"),
+  taskProgressValue: document.querySelector("#taskProgressValue"),
+  taskProgressFill: document.querySelector("#taskProgressFill"),
   imuMeta: document.querySelector("#imuMeta"),
   imuStatusPanel: document.querySelector("#imuStatusPanel"),
-  alertsList: document.querySelector("#alertsList"),
+  imuFreshness: document.querySelector("#imuFreshness"),
+  imuStatusDot: document.querySelector("#imuStatusDot"),
+  imuStatusLabel: document.querySelector("#imuStatusLabel"),
+  imuLastUpdateAgo: document.querySelector("#imuLastUpdateAgo"),
+  imuSource: document.querySelector("#imuSource"),
+  imuRosTopic: document.querySelector("#imuRosTopic"),
+  imuMqttTopic: document.querySelector("#imuMqttTopic"),
+  imuLastMessageAt: document.querySelector("#imuLastMessageAt"),
+  imuAttitudeCube: document.querySelector("#imuAttitudeCube"),
+  imuAttitudeSource: document.querySelector("#imuAttitudeSource"),
+  imuRollValue: document.querySelector("#imuRollValue"),
+  imuPitchValue: document.querySelector("#imuPitchValue"),
+  imuYawValue: document.querySelector("#imuYawValue"),
+  imuRollMarker: document.querySelector("#imuRollMarker"),
+  imuPitchMarker: document.querySelector("#imuPitchMarker"),
+  imuYawMarker: document.querySelector("#imuYawMarker"),
+  imuTrendSampleCount: document.querySelector("#imuTrendSampleCount"),
+  imuAccelValue: document.querySelector("#imuAccelValue"),
+  imuGyroValue: document.querySelector("#imuGyroValue"),
+  imuTemperatureValue: document.querySelector("#imuTemperatureValue"),
+  imuStateValue: document.querySelector("#imuStateValue"),
+  imuErrorNote: document.querySelector("#imuErrorNote"),
+  motorMeta: document.querySelector("#motorMeta"),
+  motorStatusLabel: document.querySelector("#motorStatusLabel"),
+  motorStatusDot: document.querySelector("#motorStatusDot"),
+  motorSource: document.querySelector("#motorSource"),
+  motorMqttTopic: document.querySelector("#motorMqttTopic"),
+  motorLastMessageAt: document.querySelector("#motorLastMessageAt"),
+  motorCommandForm: document.querySelector("#motorCommandForm"),
+  motorEnableSwitch: document.querySelector("#motorEnableSwitch"),
+  motorTargetRpmInput: document.querySelector("#motorTargetRpmInput"),
+  motorMaxPwmInput: document.querySelector("#motorMaxPwmInput"),
+  motorTimeoutInput: document.querySelector("#motorTimeoutInput"),
+  motorApplyButton: document.querySelector("#motorApplyButton"),
+  motorStopButton: document.querySelector("#motorStopButton"),
+  motorCommandMessage: document.querySelector("#motorCommandMessage"),
+  motorMeasuredRpm: document.querySelector("#motorMeasuredRpm"),
+  motorTargetRpm: document.querySelector("#motorTargetRpm"),
+  motorErrorRpm: document.querySelector("#motorErrorRpm"),
+  motorPwmValue: document.querySelector("#motorPwmValue"),
+  motorEnabledValue: document.querySelector("#motorEnabledValue"),
+  motorClosedLoopValue: document.querySelector("#motorClosedLoopValue"),
+  motorFaultValue: document.querySelector("#motorFaultValue"),
+  motorCommandSource: document.querySelector("#motorCommandSource"),
+  motorMaxPwmValue: document.querySelector("#motorMaxPwmValue"),
+  motorTimeoutMsValue: document.querySelector("#motorTimeoutMsValue"),
+  motorSafetyFlags: document.querySelector("#motorSafetyFlags"),
+  motorLoop: document.querySelector("#motorLoop"),
+  motorStateJsonValue: document.querySelector("#motorStateJsonValue"),
+  motorBenchEnabled: document.querySelector("#motorBenchEnabled"),
+  motorSafetyMode: document.querySelector("#motorSafetyMode"),
+  motorTargetTicks: document.querySelector("#motorTargetTicks"),
+  motorMeasuredTicks: document.querySelector("#motorMeasuredTicks"),
+  motorEncoderCount: document.querySelector("#motorEncoderCount"),
+  motorInvalidTransitions: document.querySelector("#motorInvalidTransitions"),
+  motorStateValue: document.querySelector("#motorStateValue"),
+  eventStreamMeta: document.querySelector("#eventStreamMeta"),
+  eventStreamList: document.querySelector("#eventStreamList"),
   dataMode: document.querySelector("#dataMode"),
   connectionMessage: document.querySelector("#connectionMessage"),
   wsStatus: document.querySelector("#wsStatus"),
@@ -80,6 +153,10 @@ const cachedPayloads = {
 let refreshInFlight = false;
 let latestImuSnapshot = null;
 let latestImuRenderOptions = {};
+let latestMotorSnapshot = null;
+let latestMotorRenderOptions = {};
+const imuHistory = [];
+const eventStreamKeys = new Set();
 const websocketState = {
   socket: null,
   reconnectTimer: null,
@@ -88,12 +165,21 @@ const websocketState = {
 };
 
 setupWmsTaskControls();
+setupMotorCommandControls();
 renderImuStatus(null, { loading: true });
+renderMotorStatus(null, { loading: true });
+appendEventStreamEntry({
+  key: "dashboard-start",
+  status: "info",
+  title: "Dashboard frontend loaded",
+  detail: "Waiting for HTTP polling and /ws/status.",
+});
 init();
 loadWmsTasks();
 connectStatusWebSocket();
 window.setInterval(init, REFRESH_INTERVAL_MS);
 window.setInterval(refreshImuDisplay, 1000);
+window.setInterval(refreshMotorDisplay, 1000);
 
 async function init() {
   if (refreshInFlight) {
@@ -111,16 +197,9 @@ async function init() {
     ]);
 
     const failures = [
-      syncSection("tasks", tasksResult, renderTasks, rootNodes.tasksMeta, rootNodes.tasksTable, "任务"),
-      syncSection(
-        "devices",
-        devicesResult,
-        renderDevices,
-        rootNodes.devicesMeta,
-        rootNodes.deviceGrid,
-        "设备状态"
-      ),
-      syncSection("alerts", alertsResult, renderAlerts, rootNodes.alertsMeta, rootNodes.alertsList, "告警"),
+      syncSection("tasks", tasksResult, renderTasks, rootNodes.tasksMeta, "任务"),
+      syncSection("devices", devicesResult, renderDevices, rootNodes.systemMeta, "设备状态"),
+      syncSection("alerts", alertsResult, renderAlerts, rootNodes.eventStreamMeta, "告警"),
     ].filter(Boolean);
 
     syncRobotStatus(robotStatusResult);
@@ -195,7 +274,7 @@ async function buildHttpError(response, path) {
   return detail ? `Failed to fetch ${path}: ${response.status} ${detail}` : `Failed to fetch ${path}: ${response.status}`;
 }
 
-function syncSection(key, result, renderFn, metaNode, containerNode, label) {
+function syncSection(key, result, renderFn, metaNode, label) {
   if (result.status === "fulfilled") {
     cachedPayloads[key] = result.value;
     renderFn(result.value);
@@ -212,8 +291,20 @@ function syncSection(key, result, renderFn, metaNode, containerNode, label) {
     return `${label}: ${errorMessage}`;
   }
 
-  metaNode.textContent = "unavailable";
-  containerNode.innerHTML = buildErrorState(`${label} 数据不可用：${errorMessage}`);
+  if (metaNode) {
+    metaNode.textContent = "unavailable";
+    metaNode.dataset.state = "error";
+  }
+  renderFn(null, {
+    errorMessage,
+    unavailable: true,
+  });
+  appendEventStreamEntry({
+    key: `${key}-unavailable-${errorMessage}`,
+    status: "error",
+    title: `${label} disconnected`,
+    detail: errorMessage,
+  });
   return `${label}: ${errorMessage}`;
 }
 
@@ -221,6 +312,9 @@ function syncRobotStatus(result) {
   if (result.status === "fulfilled") {
     cachedPayloads.robotStatus = result.value;
     updateImuSnapshot(extractImuSnapshotFromRobotStatus(result.value), {
+      sourceMode: "http",
+    });
+    updateMotorSnapshot(extractMotorSnapshotFromRobotStatus(result.value), {
       sourceMode: "http",
     });
     return;
@@ -232,10 +326,18 @@ function syncRobotStatus(result) {
       sourceMode: "http-cache",
       errorMessage,
     });
+    updateMotorSnapshot(extractMotorSnapshotFromRobotStatus(cachedPayloads.robotStatus), {
+      sourceMode: "http-cache",
+      errorMessage,
+    });
     return;
   }
 
   updateImuSnapshot(null, {
+    sourceMode: "http",
+    errorMessage,
+  });
+  updateMotorSnapshot(null, {
     sourceMode: "http",
     errorMessage,
   });
@@ -244,15 +346,30 @@ function syncRobotStatus(result) {
 function updateImuSnapshot(snapshot, options = {}) {
   latestImuSnapshot = snapshot;
   latestImuRenderOptions = options;
+  recordImuHistorySample(snapshot);
   renderImuStatus(snapshot, options);
 }
 
+function updateMotorSnapshot(snapshot, options = {}) {
+  latestMotorSnapshot = snapshot;
+  latestMotorRenderOptions = options;
+  renderMotorStatus(snapshot, options);
+}
+
 function refreshImuDisplay() {
-  if (!rootNodes.imuStatusPanel || !latestImuSnapshot) {
+  if (!rootNodes.imuStatusPanel) {
     return;
   }
 
   renderImuStatus(latestImuSnapshot, latestImuRenderOptions);
+}
+
+function refreshMotorDisplay() {
+  if (!rootNodes.motorMeta) {
+    return;
+  }
+
+  renderMotorStatus(latestMotorSnapshot, latestMotorRenderOptions);
 }
 
 function extractImuSnapshotFromRobotStatus(payload) {
@@ -286,6 +403,37 @@ function extractImuSnapshotFromStatusMessage(payload) {
   };
 }
 
+function extractMotorSnapshotFromRobotStatus(payload) {
+  const topicMessage = payload?.topics?.["robot/motor/status"] || null;
+  const motorPayload = payload?.robot?.motor_status ?? topicMessage?.payload ?? null;
+
+  return {
+    topic: "robot/motor/status",
+    source: payload?.source || "http:/api/robot/status",
+    generated_at: payload?.generated_at || null,
+    connection: payload?.connection || null,
+    message: topicMessage,
+    payload: motorPayload,
+    last_seen: topicMessage?.received_at || pickTimestampFromPayload(motorPayload),
+  };
+}
+
+function extractMotorSnapshotFromStatusMessage(payload) {
+  const mqttStatus = payload?.robot?.mqtt || null;
+  const topicMessage = mqttStatus?.topics?.["robot/motor/status"] || null;
+  const motorPayload = payload?.motor ?? mqttStatus?.robot?.motor_status ?? topicMessage?.payload ?? null;
+
+  return {
+    topic: "robot/motor/status",
+    source: mqttStatus?.source || "websocket:/ws/status",
+    generated_at: mqttStatus?.generated_at || payload?.timestamp || null,
+    connection: mqttStatus?.connection || null,
+    message: topicMessage,
+    payload: motorPayload,
+    last_seen: topicMessage?.received_at || pickTimestampFromPayload(motorPayload),
+  };
+}
+
 function renderImuStatus(snapshot, options = {}) {
   if (!rootNodes.imuMeta || !rootNodes.imuStatusPanel) {
     return;
@@ -294,16 +442,10 @@ function renderImuStatus(snapshot, options = {}) {
   if (options.loading) {
     rootNodes.imuMeta.textContent = "waiting for /api/robot/status or /ws/status";
     rootNodes.imuMeta.dataset.state = "ok";
-    rootNodes.imuStatusPanel.innerHTML = buildEmptyState("正在等待 MQTT robot/imu 状态。");
-    return;
   }
 
   const view = buildImuViewModel(snapshot);
-  const metaSegments = [
-    "topic: robot/imu",
-    `source: ${snapshot?.source || "-"}`,
-    `status: ${view.linkStatus}`,
-  ];
+  const metaSegments = [`source: ${view.source}`, `ros: ${view.rosTopic}`, `mqtt: ${view.mqttTopic}`, `freshness: ${view.linkLabel}`];
 
   if (options.sourceMode === "http-cache") {
     metaSegments.push("cached HTTP snapshot");
@@ -320,44 +462,254 @@ function renderImuStatus(snapshot, options = {}) {
   rootNodes.imuMeta.textContent = metaSegments.join(" · ");
   rootNodes.imuMeta.dataset.state = options.errorMessage || view.linkStatus === "offline" ? "error" : "ok";
 
-  const rows = [
-    buildImuMetricRow("online/offline", buildBadge(view.linkStatus, view.linkLabel), true),
-    buildImuMetricRow("last_seen", escapeHtml(view.lastSeen)),
-    buildImuMetricRow("accel x", escapeHtml(formatSensorValue(view.accel.x))),
-    buildImuMetricRow("accel y", escapeHtml(formatSensorValue(view.accel.y))),
-    buildImuMetricRow("accel z", escapeHtml(formatSensorValue(view.accel.z))),
-    buildImuMetricRow("gyro x", escapeHtml(formatSensorValue(view.gyro.x))),
-    buildImuMetricRow("gyro y", escapeHtml(formatSensorValue(view.gyro.y))),
-    buildImuMetricRow("gyro z", escapeHtml(formatSensorValue(view.gyro.z))),
-    buildImuMetricRow("temperature", escapeHtml(formatSensorValue(view.temperature, " C"))),
-    buildImuMetricRow("state", escapeHtml(view.state)),
-  ].join("");
+  setText(rootNodes.imuStatusLabel, view.linkLabel);
+  setStateClass(rootNodes.imuFreshness, "imu-freshness", view.linkStatus);
+  setStateClass(rootNodes.imuStatusDot, "status-dot", view.linkStatus);
+  setText(rootNodes.imuLastUpdateAgo, view.lastUpdateAgo);
+  setText(rootNodes.imuSource, view.source);
+  setText(rootNodes.imuRosTopic, view.rosTopic);
+  setText(rootNodes.imuMqttTopic, view.mqttTopic);
+  setText(rootNodes.imuLastMessageAt, view.lastMessageAt);
+  setText(rootNodes.imuAttitudeSource, view.attitude.sourceLabel);
+  setAngleRow(rootNodes.imuRollValue, rootNodes.imuRollMarker, view.attitude.roll);
+  setAngleRow(rootNodes.imuPitchValue, rootNodes.imuPitchMarker, view.attitude.pitch);
+  setAngleRow(rootNodes.imuYawValue, rootNodes.imuYawMarker, view.attitude.yaw);
+  setText(rootNodes.imuTrendSampleCount, `${imuHistory.length}/${IMU_HISTORY_LIMIT} samples`);
+  setText(rootNodes.imuAccelValue, formatVectorTriplet(view.accel));
+  setText(rootNodes.imuGyroValue, formatVectorTriplet(view.gyro));
+  setText(rootNodes.imuTemperatureValue, formatSensorValue(view.temperature, " C"));
+  setText(rootNodes.imuStateValue, view.state);
+  setText(rootNodes.imuErrorNote, options.errorMessage ? truncateText(options.errorMessage, 160) : "");
 
-  const errorNote = options.errorMessage
-    ? `<p class="imu-note error-text">${escapeHtml(truncateText(options.errorMessage, 160))}</p>`
-    : "";
+  if (rootNodes.imuAttitudeCube) {
+    const roll = view.attitude.roll.value || 0;
+    const pitch = view.attitude.pitch.value || 0;
+    const yaw = view.attitude.yaw.value || 0;
+    rootNodes.imuAttitudeCube.style.transform = `rotateZ(${yaw}deg) rotateX(${pitch}deg) rotateY(${roll}deg)`;
+  }
 
-  rootNodes.imuStatusPanel.innerHTML = `
-    <article class="imu-card">
-      <div class="device-header">
-        <div>
-          <h3>MQTT robot/imu</h3>
-          <p class="subnote">MPU6050 latest cached telemetry</p>
-        </div>
-        <div class="badge-row">
-          ${buildBadge("mqtt", "MQTT")}
-          ${buildBadge(view.linkStatus, view.linkLabel)}
-        </div>
-      </div>
-      <div class="imu-metrics">${rows}</div>
-      ${errorNote}
-    </article>
-  `;
+  window.requestAnimationFrame(() => {
+    renderImuTrendCanvas();
+  });
+}
+
+function renderMotorStatus(snapshot, options = {}) {
+  if (!rootNodes.motorMeta) {
+    return;
+  }
+
+  if (options.loading) {
+    rootNodes.motorMeta.textContent = "waiting for /api/robot/status or /ws/status";
+    rootNodes.motorMeta.dataset.state = "ok";
+  }
+
+  const view = buildMotorViewModel(snapshot);
+  const metaSegments = [`mqtt: ${view.mqttTopic}`, `freshness: ${view.linkLabel}`];
+
+  if (options.sourceMode === "http-cache") {
+    metaSegments.push("cached HTTP snapshot");
+  } else if (options.realtime) {
+    metaSegments.push("status stream");
+  } else if (options.sourceMode === "http") {
+    metaSegments.push("HTTP polling");
+  }
+
+  if (options.errorMessage) {
+    metaSegments.push(`error: ${truncateText(options.errorMessage, 96)}`);
+  }
+
+  rootNodes.motorMeta.textContent = metaSegments.join(" · ");
+  rootNodes.motorMeta.dataset.state = options.errorMessage || view.linkStatus === "offline" ? "error" : "ok";
+
+  setText(rootNodes.motorStatusLabel, view.linkLabel);
+  setStateClass(rootNodes.motorStatusDot, "status-dot", view.linkStatus);
+  setText(rootNodes.motorSource, `source: ${view.source}`);
+  setText(rootNodes.motorMqttTopic, view.mqttTopic);
+  setText(rootNodes.motorLastMessageAt, view.lastMessageAt);
+  setText(rootNodes.motorMeasuredRpm, view.measuredRpm);
+  setText(rootNodes.motorTargetRpm, view.targetRpm);
+  setText(rootNodes.motorErrorRpm, view.errorRpm);
+  setText(rootNodes.motorPwmValue, view.pwm);
+  setText(rootNodes.motorEnabledValue, view.enabled);
+  setText(rootNodes.motorClosedLoopValue, view.closedLoop);
+  setText(rootNodes.motorFaultValue, view.fault);
+  setText(rootNodes.motorCommandSource, view.commandSource);
+  setText(rootNodes.motorMaxPwmValue, view.maxPwm);
+  setText(rootNodes.motorTimeoutMsValue, view.timeoutMs);
+  setText(rootNodes.motorSafetyFlags, view.safetyFlags);
+  setText(rootNodes.motorLoop, view.loop);
+  setText(rootNodes.motorStateJsonValue, view.motorStateRaw);
+  setText(rootNodes.motorBenchEnabled, view.benchEnabled);
+  setText(rootNodes.motorSafetyMode, view.safetyMode);
+  setText(rootNodes.motorTargetTicks, view.targetTicksPerSec);
+  setText(rootNodes.motorMeasuredTicks, view.measuredTicksPerSec);
+  setText(rootNodes.motorEncoderCount, view.encoderCount);
+  setText(rootNodes.motorInvalidTransitions, view.invalidTransitions);
+  setText(rootNodes.motorStateValue, view.state);
+}
+
+function buildMotorViewModel(snapshot) {
+  const payload = snapshot?.payload || null;
+  const motorState = extractMotorStatePayload(payload);
+  const motorStateView = Object.keys(motorState).length ? motorState : payload || {};
+  const lastSeenDate = parseDateTime(snapshot?.last_seen);
+  const linkStatus = computeImuLinkStatus(snapshot, lastSeenDate);
+  const payloadState = extractImuPayloadState(payload);
+  const motorStatus = pickFirstString(payload, ["status"]);
+  const freshness = isObjectRecord(payload?.freshness) ? payload.freshness : {};
+  const motorStateFreshness = isObjectRecord(freshness.motor_state) ? freshness.motor_state : {};
+  const actualRpmFreshness = isObjectRecord(freshness.actual_rpm) ? freshness.actual_rpm : {};
+  const lastMessageAt =
+    motorStateFreshness.last_received_time ||
+    actualRpmFreshness.last_received_time ||
+    payload?.last_update_time ||
+    snapshot?.connection?.last_message_at ||
+    snapshot?.last_seen;
+  const displayStatus = buildMotorDisplayStatus(linkStatus, motorStatus);
+
+  return {
+    hasPayload: Boolean(payload),
+    linkStatus: displayStatus.dotState,
+    linkLabel: displayStatus.label,
+    source: snapshot?.source || "-",
+    mqttTopic: snapshot?.topic || "robot/motor/status",
+    lastMessageAt: formatDate(lastMessageAt),
+    measuredRpm: formatMotorNumber(
+      pickFirstValue(payload, ["measured_rpm", "actual_rpm", "actualRpm"]) ??
+        pickFirstValue(motorState, ["measured_rpm", "actual_rpm", "actualRpm"])
+    ),
+    targetRpm: formatMotorNumber(pickFirstValue(motorState, ["target_rpm", "targetRpm"]) ?? pickFirstValue(payload, ["target_rpm", "targetRpm"])),
+    errorRpm: formatMotorNumber(pickFirstValue(motorState, ["error_rpm", "errorRpm"]) ?? pickFirstValue(payload, ["error_rpm", "errorRpm"])),
+    pwm: formatMotorNumber(
+      pickFirstValue(payload, ["pwm", "pwm_duty", "pwmDuty"]) ??
+        pickFirstValue(motorState, ["pwm", "pwm_duty", "pwmDuty"])
+    ),
+    enabled: formatBooleanLike(
+      pickFirstValue(payload, ["enabled", "control_enabled", "controlEnabled"]) ??
+        pickFirstValue(motorState, ["enabled", "control_enabled", "controlEnabled"])
+    ),
+    closedLoop: formatBooleanLike(
+      pickFirstValue(payload, ["closed_loop", "closedLoop"]) ??
+        pickFirstValue(motorState, ["closed_loop", "closedLoop"])
+    ),
+    fault: formatBooleanLike(
+      pickFirstValue(payload, ["fault", "fault_active", "faultActive"]) ??
+        pickFirstValue(motorState, ["fault", "fault_active", "faultActive"])
+    ),
+    commandSource:
+      pickFirstString(motorStateView, ["source", "active_source", "activeSource"]) || "-",
+    maxPwm: formatMotorNumber(
+      pickFirstValue(payload, ["max_pwm", "maxPwm"]) ??
+        pickFirstValue(motorState, ["max_pwm", "maxPwm"])
+    ),
+    timeoutMs: formatMotorNumber(
+      pickFirstValue(payload, ["command_timeout_ms", "timeout_ms"]) ??
+        pickFirstValue(motorState, ["command_timeout_ms", "timeout_ms"])
+    ),
+    safetyFlags: formatMotorSafetyFlags(motorStateView),
+    loop: formatMotorNumber(pickFirstValue(motorStateView, ["loop", "loop_count", "loopCount"])),
+    motorStateRaw: truncateText(formatMotorStateRaw(payload?.motor_state), 120),
+    benchEnabled: formatBooleanLike(pickFirstValue(payload, ["bench_enabled", "benchEnabled"]) ?? pickFirstValue(motorState, ["bench_enabled", "benchEnabled"])),
+    targetTicksPerSec: formatMotorNumber(pickFirstValue(payload, ["target_ticks_per_sec", "targetTicksPerSec"]) ?? pickFirstValue(motorState, ["target_ticks_per_sec", "targetTicksPerSec"])),
+    measuredTicksPerSec: formatMotorNumber(pickFirstValue(payload, ["measured_ticks_per_sec", "measuredTicksPerSec"]) ?? pickFirstValue(motorState, ["measured_ticks_per_sec", "measuredTicksPerSec"])),
+    encoderCount: formatMotorNumber(pickFirstValue(payload, ["encoder_count", "encoderCount"]) ?? pickFirstValue(motorState, ["encoder_count", "encoderCount"])),
+    invalidTransitions: formatMotorNumber(pickFirstValue(payload, ["invalid_transitions", "invalidTransitions"]) ?? pickFirstValue(motorState, ["invalid_transitions", "invalidTransitions"])),
+    safetyMode: pickFirstString(payload, ["safety_mode", "safetyMode"]) || pickFirstString(motorState, ["safety_mode", "safetyMode"]) || "-",
+    state: displayStatus.stateText || (linkStatus === "online" ? payloadState || "online" : linkStatus),
+  };
+}
+
+function buildMotorDisplayStatus(linkStatus, motorStatus) {
+  if (linkStatus === "offline") {
+    return { label: "Offline", dotState: "offline", stateText: "offline" };
+  }
+
+  const status = String(motorStatus || "").toLowerCase();
+  if (status === "reserved") {
+    return { label: "Reserved", dotState: "stale", stateText: "reserved" };
+  }
+  if (status === "missing") {
+    return { label: "Missing", dotState: "stale", stateText: "missing" };
+  }
+  if (status === "stale") {
+    return { label: "Stale", dotState: "stale", stateText: "stale" };
+  }
+  if (status === "stopped" || status === "stop") {
+    return { label: "Stopped", dotState: "stale", stateText: "stopped" };
+  }
+  if (status === "fault" || status === "error") {
+    return { label: "Fault", dotState: "offline", stateText: status };
+  }
+  if (status === "ok" || status === "online") {
+    return { label: "Online", dotState: "online", stateText: status };
+  }
+
+  return {
+    label: linkStatus === "online" ? "Online" : "Stale",
+    dotState: linkStatus,
+    stateText: status || linkStatus,
+  };
+}
+
+function extractMotorStatePayload(payload) {
+  if (!isObjectRecord(payload)) {
+    return {};
+  }
+
+  const motorState = payload.motor_state ?? payload.motorState;
+  if (isObjectRecord(motorState)) {
+    return motorState;
+  }
+
+  if (typeof motorState === "string") {
+    const parsed = parseJsonObjectString(motorState);
+    return parsed || {};
+  }
+
+  return {};
+}
+
+function parseJsonObjectString(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return isObjectRecord(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function formatMotorStateRaw(value) {
+  if (value === undefined || value === null || value === "") {
+    return "-";
+  }
+
+  if (isObjectRecord(value)) {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function formatMotorSafetyFlags(motorState) {
+  if (!isObjectRecord(motorState)) {
+    return "- / - / -";
+  }
+
+  return [
+    formatBooleanLike(pickFirstValue(motorState, ["timeout", "timeout_active", "timeoutActive"])),
+    formatBooleanLike(pickFirstValue(motorState, ["stop", "estop", "estop_active", "estopActive"])),
+    formatBooleanLike(pickFirstValue(motorState, ["fault", "fault_active", "faultActive"])),
+  ].join(" / ");
 }
 
 function buildImuViewModel(snapshot) {
   const payload = snapshot?.payload || null;
   const lastSeenDate = parseDateTime(snapshot?.last_seen);
+  const lastMessageDate = parseDateTime(snapshot?.connection?.last_message_at) || lastSeenDate;
   const linkStatus = computeImuLinkStatus(snapshot, lastSeenDate);
   const payloadState = extractImuPayloadState(payload);
   const accel = extractVector(payload, {
@@ -370,16 +722,283 @@ function buildImuViewModel(snapshot) {
     flatPrefixes: ["gyro", "gyroscope", "angular_velocity"],
     shortPrefix: "g",
   });
+  const attitude = extractAttitude(payload);
+  const rosTopic = pickFirstString(payload, ["ros_topic", "topic", "source_topic"]) || "-";
+  const payloadSource = pickFirstString(payload, ["source", "source_type"]) || snapshot?.source || "-";
 
   return {
+    hasPayload: Boolean(payload),
     linkStatus,
     linkLabel: linkStatus === "online" ? "Online" : linkStatus === "stale" ? "Stale" : "Offline",
+    source: payloadSource,
+    rosTopic,
+    mqttTopic: snapshot?.topic || "robot/imu",
+    lastMessageAt: formatDate(snapshot?.connection?.last_message_at || snapshot?.last_seen),
+    lastUpdateAgo: lastSeenDate ? formatElapsedFixed(lastSeenDate) : "--.-s",
     lastSeen: formatLastSeen(snapshot?.last_seen, lastSeenDate),
+    lastSeenDate,
+    lastMessageDate,
     accel,
     gyro,
+    attitude,
     temperature: pickFirstValue(payload, ["temperature", "temperature_c", "temp_c", "temp", "imu_temperature"]),
     state: linkStatus === "online" ? payloadState || "online" : linkStatus,
   };
+}
+
+function extractAttitude(payload) {
+  const rpy = extractRpyAngles(payload);
+  if (rpy) {
+    return buildAttitudeView(rpy, "rpy");
+  }
+
+  const quaternion = extractQuaternion(payload);
+  if (quaternion) {
+    return buildAttitudeView(quaternionToEulerDegrees(quaternion), "quaternion");
+  }
+
+  return buildAttitudeView({ roll: undefined, pitch: undefined, yaw: undefined }, "waiting");
+}
+
+function buildAttitudeView(values, sourceLabel) {
+  return {
+    sourceLabel,
+    roll: buildAngleView(values.roll, 180),
+    pitch: buildAngleView(values.pitch, 90),
+    yaw: buildAngleView(values.yaw, 180),
+  };
+}
+
+function buildAngleView(value, range) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return { value: undefined, label: "--.-°", percent: 50 };
+  }
+
+  const clamped = Math.max(-range, Math.min(range, numericValue));
+  return {
+    value: numericValue,
+    label: formatSignedFixed(numericValue, 3, 1, "°"),
+    percent: ((clamped + range) / (range * 2)) * 100,
+  };
+}
+
+function extractRpyAngles(payload) {
+  if (!isObjectRecord(payload)) {
+    return null;
+  }
+
+  const roll = pickFirstValue(payload, ["roll", "roll_deg", "rpy_roll", "rpy_roll_deg"]);
+  const pitch = pickFirstValue(payload, ["pitch", "pitch_deg", "rpy_pitch", "rpy_pitch_deg"]);
+  const yaw = pickFirstValue(payload, ["yaw", "yaw_deg", "heading", "heading_deg", "rpy_yaw", "rpy_yaw_deg"]);
+
+  if ([roll, pitch, yaw].some((value) => toFiniteNumber(value) !== undefined)) {
+    return {
+      roll: normalizeAngleInput(roll),
+      pitch: normalizeAngleInput(pitch),
+      yaw: normalizeAngleInput(yaw),
+    };
+  }
+
+  const group = payload.rpy || payload.euler || payload.attitude;
+  if (!isObjectRecord(group)) {
+    return null;
+  }
+
+  const groupRoll = pickFirstValue(group, ["roll", "x"]);
+  const groupPitch = pickFirstValue(group, ["pitch", "y"]);
+  const groupYaw = pickFirstValue(group, ["yaw", "z"]);
+
+  if ([groupRoll, groupPitch, groupYaw].some((value) => toFiniteNumber(value) !== undefined)) {
+    return {
+      roll: normalizeAngleInput(groupRoll),
+      pitch: normalizeAngleInput(groupPitch),
+      yaw: normalizeAngleInput(groupYaw),
+    };
+  }
+
+  return null;
+}
+
+function extractQuaternion(payload) {
+  if (!isObjectRecord(payload)) {
+    return null;
+  }
+
+  const group = payload.orientation || payload.quaternion || payload.q;
+  const x = isObjectRecord(group) ? pickFirstValue(group, ["x", "qx"]) : pickFirstValue(payload, ["orientation_x", "qx", "quat_x"]);
+  const y = isObjectRecord(group) ? pickFirstValue(group, ["y", "qy"]) : pickFirstValue(payload, ["orientation_y", "qy", "quat_y"]);
+  const z = isObjectRecord(group) ? pickFirstValue(group, ["z", "qz"]) : pickFirstValue(payload, ["orientation_z", "qz", "quat_z"]);
+  const w = isObjectRecord(group) ? pickFirstValue(group, ["w", "qw"]) : pickFirstValue(payload, ["orientation_w", "qw", "quat_w"]);
+
+  const quaternion = {
+    x: toFiniteNumber(x),
+    y: toFiniteNumber(y),
+    z: toFiniteNumber(z),
+    w: toFiniteNumber(w),
+  };
+
+  if ([quaternion.x, quaternion.y, quaternion.z, quaternion.w].every((value) => value !== undefined)) {
+    return quaternion;
+  }
+
+  return null;
+}
+
+function quaternionToEulerDegrees(quaternion) {
+  const x = quaternion.x;
+  const y = quaternion.y;
+  const z = quaternion.z;
+  const w = quaternion.w;
+
+  const sinrCosp = 2 * (w * x + y * z);
+  const cosrCosp = 1 - 2 * (x * x + y * y);
+  const roll = Math.atan2(sinrCosp, cosrCosp);
+
+  const sinp = 2 * (w * y - z * x);
+  const pitch = Math.abs(sinp) >= 1 ? Math.sign(sinp) * Math.PI / 2 : Math.asin(sinp);
+
+  const sinyCosp = 2 * (w * z + x * y);
+  const cosyCosp = 1 - 2 * (y * y + z * z);
+  const yaw = Math.atan2(sinyCosp, cosyCosp);
+
+  return {
+    roll: radiansToDegrees(roll),
+    pitch: radiansToDegrees(pitch),
+    yaw: radiansToDegrees(yaw),
+  };
+}
+
+function normalizeAngleInput(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return undefined;
+  }
+
+  return Math.abs(numericValue) <= Math.PI * 2 ? radiansToDegrees(numericValue) : numericValue;
+}
+
+function radiansToDegrees(value) {
+  return value * 180 / Math.PI;
+}
+
+function recordImuHistorySample(snapshot) {
+  const payload = snapshot?.payload;
+  const lastSeen = snapshot?.last_seen;
+  if (!payload || !lastSeen) {
+    return;
+  }
+
+  const latest = imuHistory[imuHistory.length - 1];
+  if (latest?.key === lastSeen) {
+    return;
+  }
+
+  const attitude = extractAttitude(payload);
+  if ([attitude.roll.value, attitude.pitch.value, attitude.yaw.value].every((value) => value === undefined)) {
+    return;
+  }
+
+  imuHistory.push({
+    key: lastSeen,
+    timestamp: lastSeen,
+    roll: attitude.roll.value,
+    pitch: attitude.pitch.value,
+    yaw: attitude.yaw.value,
+  });
+
+  if (imuHistory.length > IMU_HISTORY_LIMIT) {
+    imuHistory.splice(0, imuHistory.length - IMU_HISTORY_LIMIT);
+  }
+}
+
+function buildImuInfoTile(label, value) {
+  return `
+    <div class="imu-info-tile">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+    </div>
+  `;
+}
+
+function buildAttitudeAxisRow(axis, angle) {
+  return `
+    <div class="attitude-axis">
+      <div class="attitude-axis-label">
+        <span>${escapeHtml(axis.toUpperCase())}</span>
+        <strong>${escapeHtml(angle.label)}</strong>
+      </div>
+      <div class="attitude-bar">
+        <span class="attitude-zero"></span>
+        <span class="attitude-marker" style="left:${Math.max(0, Math.min(100, angle.percent))}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderImuTrendCanvas() {
+  const canvas = document.querySelector("#imuTrendCanvas");
+  if (!canvas) {
+    return;
+  }
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#fff9f1";
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = "rgba(31, 36, 33, 0.12)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(0, height / 2);
+  context.lineTo(width, height / 2);
+  context.stroke();
+
+  const series = [
+    { key: "roll", color: "#205c4f" },
+    { key: "pitch", color: "#b87519" },
+    { key: "yaw", color: "#32485f" },
+  ];
+
+  for (const item of series) {
+    drawTrendLine(context, item.key, item.color, width, height);
+  }
+}
+
+function drawTrendLine(context, key, color, width, height) {
+  const values = imuHistory.map((sample) => toFiniteNumber(sample[key])).filter((value) => value !== undefined);
+  if (values.length < 2) {
+    return;
+  }
+
+  const range = key === "pitch" ? 90 : 180;
+  const xStep = width / Math.max(1, IMU_HISTORY_LIMIT - 1);
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.beginPath();
+
+  let hasPoint = false;
+  imuHistory.forEach((sample, index) => {
+    const value = toFiniteNumber(sample[key]);
+    if (value === undefined) {
+      return;
+    }
+    const clamped = Math.max(-range, Math.min(range, value));
+    const x = index * xStep;
+    const y = height - ((clamped + range) / (range * 2)) * height;
+    if (!hasPoint) {
+      context.moveTo(x, y);
+      hasPoint = true;
+    } else {
+      context.lineTo(x, y);
+    }
+  });
+  context.stroke();
 }
 
 function computeImuLinkStatus(snapshot, lastSeenDate) {
@@ -486,6 +1105,24 @@ function pickFirstValue(source, keys) {
   return undefined;
 }
 
+function pickFirstString(source, keys) {
+  const value = pickFirstValue(source, keys);
+  return value === undefined || value === null || value === "" ? "" : String(value);
+}
+
+function toFiniteNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
 function isObjectRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -500,6 +1137,120 @@ function setupWmsTaskControls() {
       loadWmsTasks();
     });
   }
+}
+
+function setupMotorCommandControls() {
+  if (rootNodes.motorCommandForm) {
+    rootNodes.motorCommandForm.addEventListener("submit", handleMotorCommandSubmit);
+  }
+
+  if (rootNodes.motorStopButton) {
+    rootNodes.motorStopButton.addEventListener("click", handleMotorStopClick);
+  }
+}
+
+function readMotorCommandFormPayload(options = {}) {
+  return {
+    target_rpm: options.stop ? 0 : toFiniteNumber(rootNodes.motorTargetRpmInput?.value) || 0,
+    enabled: options.stop ? false : Boolean(rootNodes.motorEnableSwitch?.checked),
+    closed_loop: true,
+    max_pwm: toFiniteNumber(rootNodes.motorMaxPwmInput?.value) || 0.25,
+    timeout_ms: Math.round(toFiniteNumber(rootNodes.motorTimeoutInput?.value) || 800),
+    stop: Boolean(options.stop),
+  };
+}
+
+async function handleMotorCommandSubmit(event) {
+  event.preventDefault();
+
+  const payload = readMotorCommandFormPayload();
+  setMotorControlsDisabled(true);
+  renderMotorCommandMessage(
+    `Publishing motor cmd: rpm ${payload.target_rpm}, max_pwm ${payload.max_pwm.toFixed(2)}, timeout ${payload.timeout_ms} ms`
+  );
+
+  try {
+    const response = await postJson(DATA_FILES.motorCommand, payload);
+    const publishedPayload = response?.payload || payload;
+    renderMotorCommandMessage(
+      `Motor cmd published: rpm ${publishedPayload.target_rpm}, max_pwm ${publishedPayload.max_pwm}, timeout ${publishedPayload.timeout_ms} ms`
+    );
+    appendEventStreamEntry({
+      key: response?.payload?.command_id || `motor-cmd-${Date.now()}`,
+      status: "online",
+      title: "Motor command published",
+      detail: `target_rpm: ${publishedPayload.target_rpm} · stop: ${publishedPayload.stop ? "yes" : "no"}`,
+      timestamp: response?.published_at,
+    });
+  } catch (error) {
+    renderMotorCommandMessage(`Motor cmd failed: ${normalizeError(error)}`, true);
+    appendEventStreamEntry({
+      key: `motor-cmd-error-${Date.now()}`,
+      status: "error",
+      title: "Motor command failed",
+      detail: normalizeError(error),
+    });
+  } finally {
+    setMotorControlsDisabled(false);
+  }
+}
+
+async function handleMotorStopClick() {
+  const payload = readMotorCommandFormPayload({ stop: true });
+  setMotorControlsDisabled(true);
+  renderMotorCommandMessage("Publishing stop command...");
+
+  try {
+    const response = await postJson(DATA_FILES.motorCommand, payload);
+    if (rootNodes.motorEnableSwitch) {
+      rootNodes.motorEnableSwitch.checked = false;
+    }
+    if (rootNodes.motorTargetRpmInput) {
+      rootNodes.motorTargetRpmInput.value = "0";
+    }
+    renderMotorCommandMessage("Stop command published.");
+    appendEventStreamEntry({
+      key: response?.payload?.command_id || `motor-stop-${Date.now()}`,
+      status: "stale",
+      title: "Motor stop published",
+      detail: "stop=true",
+      timestamp: response?.published_at,
+    });
+  } catch (error) {
+    renderMotorCommandMessage(`Stop command failed: ${normalizeError(error)}`, true);
+  } finally {
+    setMotorControlsDisabled(false);
+  }
+}
+
+function setMotorControlsDisabled(disabled) {
+  if (rootNodes.motorApplyButton) {
+    rootNodes.motorApplyButton.disabled = disabled;
+  }
+  if (rootNodes.motorStopButton) {
+    rootNodes.motorStopButton.disabled = disabled;
+  }
+  if (rootNodes.motorEnableSwitch) {
+    rootNodes.motorEnableSwitch.disabled = disabled;
+  }
+  if (rootNodes.motorTargetRpmInput) {
+    rootNodes.motorTargetRpmInput.disabled = disabled;
+  }
+  if (rootNodes.motorMaxPwmInput) {
+    rootNodes.motorMaxPwmInput.disabled = disabled;
+  }
+  if (rootNodes.motorTimeoutInput) {
+    rootNodes.motorTimeoutInput.disabled = disabled;
+  }
+}
+
+function renderMotorCommandMessage(message, isError = false) {
+  if (!rootNodes.motorCommandMessage) {
+    return;
+  }
+
+  rootNodes.motorCommandMessage.textContent = message;
+  rootNodes.motorCommandMessage.dataset.state = isError ? "error" : "ok";
 }
 
 async function handleWmsTaskSubmit(event) {
@@ -697,6 +1448,12 @@ function connectStatusWebSocket() {
   socket.addEventListener("open", () => {
     websocketState.connected = true;
     renderWebSocketStatus(true, `Connected to status stream: ${WS_STATUS_URL}`);
+    appendEventStreamEntry({
+      key: `ws-open-${Date.now()}`,
+      status: "online",
+      title: "Status stream connected",
+      detail: WS_STATUS_URL,
+    });
   });
 
   socket.addEventListener("message", (event) => {
@@ -715,6 +1472,12 @@ function connectStatusWebSocket() {
 
     websocketState.connected = false;
     renderWebSocketStatus(false, "Status stream disconnected; HTTP polling fallback is active.");
+    appendEventStreamEntry({
+      key: `ws-close-${Date.now()}`,
+      status: "error",
+      title: "Status stream disconnected",
+      detail: "HTTP polling fallback is active.",
+    });
     websocketState.reconnectTimer = window.setTimeout(connectStatusWebSocket, WS_RECONNECT_DELAY_MS);
   });
 
@@ -758,6 +1521,19 @@ function handleStatusMessage(payload) {
     sourceMode: "websocket",
     errorMessage: robot.error,
   });
+  updateMotorSnapshot(extractMotorSnapshotFromStatusMessage(payload), {
+    realtime: true,
+    sourceMode: "websocket",
+    errorMessage: robot.error,
+  });
+
+  appendEventStreamEntry({
+    key: `ws-${websocketState.lastMessageAt}`,
+    status: robot.status === "disconnected" ? "error" : "online",
+    title: "Status stream update",
+    detail: `tasks: ${tasksPayload.data.length} · devices: ${devicesPayload.data.length}`,
+    timestamp: websocketState.lastMessageAt,
+  });
 
   if (cachedPayloads.alerts) {
     renderSummary(cachedPayloads.tasks, cachedPayloads.devices, cachedPayloads.alerts);
@@ -782,40 +1558,11 @@ function renderSummary(tasksPayload, devicesPayload, alertsPayload, failures = [
   const onlineDevices = devices.filter((device) => device.comm_status === "online").length;
   const openAlerts = alerts.filter((alert) => alert.status === "open").length;
 
-  const cards = [
-    {
-      label: "Active Tasks",
-      value: runningTasks,
-      note: `${tasks.length} total tasks in dashboard feed`,
-    },
-    {
-      label: "Blocked Tasks",
-      value: blockedTasks,
-      note: "需要优先排查的 AMR 任务",
-    },
-    {
-      label: "Online Devices",
-      value: onlineDevices,
-      note: `${devices.length} device status snapshots`,
-    },
-    {
-      label: "Open Alerts",
-      value: openAlerts,
-      note: `${alerts.length} total alerts in current view`,
-    },
-  ];
-
-  rootNodes.summaryGrid.innerHTML = cards
-    .map(
-      (card) => `
-        <article class="summary-card">
-          <span class="section-kicker">${escapeHtml(card.label)}</span>
-          <strong>${card.value}</strong>
-          <p>${escapeHtml(card.note)}</p>
-        </article>
-      `
-    )
-    .join("");
+  ensureSummaryCards();
+  updateSummaryCard("activeTasks", runningTasks, `${tasks.length} total tasks in dashboard feed`);
+  updateSummaryCard("blockedTasks", blockedTasks, "需要优先排查的 AMR 任务");
+  updateSummaryCard("onlineDevices", onlineDevices, `${devices.length} device status snapshots`);
+  updateSummaryCard("openAlerts", openAlerts, `${alerts.length} total alerts in current view`);
 
   const generatedSegments = [
     `Tasks: ${formatDate(tasksPayload.generated_at)}`,
@@ -834,198 +1581,122 @@ function renderSummaryUnavailable(failures) {
   rootNodes.generatedAt.textContent = failures.length
     ? `Dashboard backend unavailable: ${truncateText(failures.join(" | "), 180)}`
     : "正在等待 Dashboard backend 返回数据...";
-  rootNodes.summaryGrid.innerHTML = buildErrorState(
-    failures.length
-      ? `无法从 Dashboard backend 加载完整概览：${failures.join("；")}`
-      : "正在等待 Dashboard backend 返回首批数据。"
-  );
+  ensureSummaryCards();
+  updateSummaryCard("activeTasks", "--", "waiting for dashboard backend");
+  updateSummaryCard("blockedTasks", "--", "waiting for dashboard backend");
+  updateSummaryCard("onlineDevices", "--", "waiting for dashboard backend");
+  updateSummaryCard("openAlerts", "--", failures.length ? truncateText(failures.join(" | "), 120) : "waiting for dashboard backend");
+}
+
+function ensureSummaryCards() {
+  if (!rootNodes.summaryGrid || rootNodes.summaryGrid.dataset.ready === "true") {
+    return;
+  }
+
+  const cards = [
+    ["activeTasks", "Active Tasks"],
+    ["blockedTasks", "Blocked Tasks"],
+    ["onlineDevices", "Online Devices"],
+    ["openAlerts", "Open Alerts"],
+  ];
+
+  rootNodes.summaryGrid.innerHTML = cards
+    .map(
+      ([key, label]) => `
+        <article class="summary-card" data-summary-card="${key}">
+          <span class="section-kicker">${label}</span>
+          <strong data-summary-value="${key}" class="numeric-fixed">--</strong>
+          <p data-summary-note="${key}">waiting for dashboard backend</p>
+        </article>
+      `
+    )
+    .join("");
+  rootNodes.summaryGrid.dataset.ready = "true";
+}
+
+function updateSummaryCard(key, value, note) {
+  setText(document.querySelector(`[data-summary-value="${key}"]`), String(value));
+  setText(document.querySelector(`[data-summary-note="${key}"]`), note);
 }
 
 function renderTasks(tasksPayload, options = {}) {
   const tasks = Array.isArray(tasksPayload?.data) ? tasksPayload.data : [];
-  rootNodes.tasksMeta.textContent = buildSectionMeta(tasks.length, tasksPayload?.source, options);
-
-  if (!tasks.length) {
-    rootNodes.tasksTable.innerHTML = buildEmptyState("当前没有可展示的任务数据。");
-    return;
+  if (rootNodes.tasksMeta) {
+    rootNodes.tasksMeta.textContent = buildSectionMeta(tasks.length, tasksPayload?.source, options);
+    rootNodes.tasksMeta.dataset.state = options.errorMessage ? "error" : "ok";
   }
 
-  rootNodes.tasksTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Task</th>
-          <th>Robot</th>
-          <th>Type</th>
-          <th>Route</th>
-          <th>Status</th>
-          <th>Priority</th>
-          <th>Progress</th>
-          <th>Timeline</th>
-          <th>Latest Event</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tasks
-          .map(
-            (task) => `
-              <tr>
-                <td>
-                  <strong>${escapeHtml(task.task_id)}</strong>
-                  <div class="subnote mono">${escapeHtml(task.order_id)}</div>
-                </td>
-                <td>
-                  <strong>${escapeHtml(task.robot_id || "-")}</strong>
-                </td>
-                <td>${escapeHtml(task.task_type)}</td>
-                <td>
-                  <strong>${escapeHtml(task.pickup_station || "-")}</strong>
-                  <div class="route">${escapeHtml(task.dropoff_station || "-")}</div>
-                </td>
-                <td>
-                  <div class="badge-row">
-                    ${buildBadge(task.status, taskStatusLabel[task.status] || task.status)}
-                    ${buildBadge("source-status", `raw: ${task.source_status}`)}
-                  </div>
-                </td>
-                <td>${buildBadge(task.priority, task.priority)}</td>
-                <td>
-                  <div class="progress">
-                    <strong>${task.progress}%</strong>
-                    <div class="progress-track">
-                      <div class="progress-fill" style="width: ${Math.max(
-                        0,
-                        Math.min(100, task.progress)
-                      )}%"></div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div class="subnote">created: ${formatDate(task.created_at)}</div>
-                  <div class="subnote">started: ${formatDate(task.started_at)}</div>
-                  <div class="subnote">due: ${formatDate(task.due_at)}</div>
-                </td>
-                <td>
-                  <strong>${escapeHtml(task.last_event || "-")}</strong>
-                  <div class="route">
-                    ${task.blocked_reason ? `blocked: ${escapeHtml(task.blocked_reason)}` : "no blocking reason"}
-                  </div>
-                </td>
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  const activeTasks = tasks.filter((task) =>
+    ["queued", "dispatching", "running", "blocked"].includes(task.status)
+  );
+  const blockedTasks = tasks.filter((task) => task.status === "blocked");
+  const completedTasks = tasks.filter((task) => task.status === "completed");
+  const currentTask = activeTasks[0] || tasks[0] || null;
+  const progress = clampPercent(toFiniteNumber(currentTask?.progress) || 0);
+
+  setText(rootNodes.taskActiveCount, formatCount(activeTasks.length));
+  setText(rootNodes.taskBlockedCount, formatCount(blockedTasks.length));
+  setText(rootNodes.taskCompletedCount, formatCount(completedTasks.length));
+  setText(rootNodes.taskTotalCount, formatCount(tasks.length));
+  setText(rootNodes.taskCurrentId, currentTask?.task_id || "-");
+  setText(rootNodes.taskCurrentStatus, currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-");
+  setText(
+    rootNodes.taskCurrentRoute,
+    currentTask ? `${currentTask.pickup_station || "-"} -> ${currentTask.dropoff_station || "-"}` : "-"
+  );
+  setText(rootNodes.taskProgressValue, currentTask ? `${String(Math.round(progress)).padStart(3, "0")}%` : "--%");
+  setWidthPercent(rootNodes.taskProgressFill, progress);
 }
 
 function renderDevices(devicesPayload, options = {}) {
   const devices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
-  rootNodes.devicesMeta.textContent = buildSectionMeta(devices.length, devicesPayload?.source, options);
+  const onlineDevices = devices.filter((device) => device.comm_status === "online").length;
+  const warningDevices = devices.filter((device) => device.health_status === "warning").length;
+  const criticalDevices = devices.filter((device) => device.health_status === "critical").length;
+  const worstStatus = criticalDevices > 0 ? "critical" : warningDevices > 0 ? "warning" : devices.length ? "online" : "offline";
+  const label = worstStatus === "online" ? "Healthy" : worstStatus === "offline" ? "Offline" : healthStatusLabel[worstStatus] || "Unknown";
+  const lastUpdate = pickLatestTimestamp(devices.map((device) => device.last_seen_at)) || devicesPayload?.generated_at;
 
-  if (!devices.length) {
-    rootNodes.deviceGrid.innerHTML = buildEmptyState("当前没有可展示的设备状态数据。");
-    return;
+  if (rootNodes.systemMeta) {
+    rootNodes.systemMeta.textContent = buildSectionMeta(devices.length, devicesPayload?.source, options);
+    rootNodes.systemMeta.dataset.state = options.errorMessage || worstStatus === "critical" ? "error" : "ok";
   }
 
-  rootNodes.deviceGrid.innerHTML = devices
-    .map((device) => {
-      const metrics = Object.entries(device.metrics || {})
-        .map(
-          ([key, value]) => `
-            <div class="metric-row">
-              <span>${escapeHtml(key)}</span>
-              <strong>${escapeHtml(String(value))}</strong>
-            </div>
-          `
-        )
-        .join("");
-
-      const alarms = Array.isArray(device.alarms) && device.alarms.length
-        ? device.alarms.map((alarm) => buildPill(alarm)).join("")
-        : '<span class="muted">No active subsystem alarms</span>';
-
-      return `
-        <article class="device-card">
-          <div class="device-header">
-            <div>
-              <h3>${escapeHtml(device.device_id)}</h3>
-              <p class="subnote">${escapeHtml(device.robot_id || "-")} · ${escapeHtml(
-                device.subsystem
-              )}</p>
-            </div>
-            <div class="badge-row">
-              ${buildBadge(device.transport, device.transport)}
-              ${buildBadge(device.comm_status, commStatusLabel[device.comm_status] || device.comm_status)}
-              ${buildBadge(
-                device.health_status,
-                healthStatusLabel[device.health_status] || device.health_status
-              )}
-            </div>
-          </div>
-          <div class="subnote">firmware: ${escapeHtml(device.firmware_version || "-")}</div>
-          <div class="subnote">last seen: ${formatDate(device.last_seen_at)}</div>
-          <div class="metrics-list">${metrics}</div>
-          <div class="pill-row">${alarms}</div>
-        </article>
-      `;
-    })
-    .join("");
+  setText(rootNodes.systemStatusLabel, label);
+  setStateClass(rootNodes.systemStatusDot, "status-dot", statusToDotState(worstStatus));
+  setText(rootNodes.systemSource, `source: ${devicesPayload?.source || "-"}`);
+  setText(rootNodes.systemTotalDevices, formatCount(devices.length));
+  setText(rootNodes.systemOnlineDevices, formatCount(onlineDevices));
+  setText(rootNodes.systemWarningDevices, formatCount(warningDevices));
+  setText(rootNodes.systemCriticalDevices, formatCount(criticalDevices));
+  setText(rootNodes.systemLastUpdate, lastUpdate ? `${formatElapsedFixed(parseDateTime(lastUpdate))} ago` : "--.-s ago");
 }
 
 function renderAlerts(alertsPayload, options = {}) {
   const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
-  rootNodes.alertsMeta.textContent = buildSectionMeta(alerts.length, alertsPayload?.source, options);
-
-  if (!alerts.length) {
-    rootNodes.alertsList.innerHTML = buildEmptyState("当前没有可展示的告警数据。");
-    return;
+  if (rootNodes.eventStreamMeta) {
+    rootNodes.eventStreamMeta.textContent = `${alerts.length} alerts · latest 10 status events`;
+    rootNodes.eventStreamMeta.dataset.state = options.errorMessage ? "error" : "ok";
   }
 
-  rootNodes.alertsList.innerHTML = alerts
-    .map((alert) => {
-      const evidence = Array.isArray(alert.evidence) && alert.evidence.length
-        ? alert.evidence
-            .map(
-              (item) => `
-                <div class="evidence-item">
-                  <span>evidence</span>
-                  <strong class="mono">${escapeHtml(item)}</strong>
-                </div>
-              `
-            )
-            .join("")
-        : '<div class="muted">No evidence</div>';
+  alerts.slice(0, 3).forEach((alert) => {
+    appendEventStreamEntry({
+      key: `alert-${alert.id || alert.title || alert.updated_at || alert.triggered_at}`,
+      status: alert.level === "critical" ? "error" : alert.level === "warning" ? "stale" : "info",
+      title: alert.title || "Alert",
+      detail: alert.description || alert.suggested_action || "-",
+      timestamp: alert.updated_at || alert.triggered_at,
+    });
+  });
 
-      return `
-        <article class="alert-card">
-          <div class="alert-header">
-            <div>
-              <h3>${escapeHtml(alert.title)}</h3>
-              <p class="subnote">${escapeHtml(alert.description)}</p>
-            </div>
-            <div class="badge-row">
-              ${buildBadge(alert.level, alertLevelLabel[alert.level] || alert.level)}
-              ${buildBadge(alert.status, alert.status)}
-              ${buildBadge("category", alert.category)}
-            </div>
-          </div>
-          <div class="subnote">source: ${escapeHtml(alert.source_type)} · ref: ${escapeHtml(alert.source_ref || "-")}</div>
-          <div class="subnote">robot: ${escapeHtml(alert.related_robot_id || "-")} · task: ${escapeHtml(
-            alert.related_task_id || "-"
-          )}</div>
-          <div class="subnote">triggered: ${formatDate(alert.triggered_at)}</div>
-          <div class="subnote">updated: ${formatDate(alert.updated_at)}</div>
-          <div class="metrics-list">${evidence}</div>
-          <div class="evidence-item">
-            <span>action</span>
-            <strong>${escapeHtml(alert.suggested_action || "-")}</strong>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  if (!alerts.length && options.unavailable) {
+    appendEventStreamEntry({
+      key: `alerts-unavailable-${options.errorMessage || "unknown"}`,
+      status: "error",
+      title: "Alerts unavailable",
+      detail: options.errorMessage || "Dashboard backend unavailable.",
+    });
+  }
 }
 
 function renderConnectionStatus(isOnline, message) {
@@ -1039,6 +1710,103 @@ function renderConnectionStatus(isOnline, message) {
   if (rootNodes.connectionMessage) {
     rootNodes.connectionMessage.textContent = message;
   }
+}
+
+function setText(node, value) {
+  if (node) {
+    node.textContent = value;
+  }
+}
+
+function setStateClass(node, baseClass, state) {
+  if (node) {
+    node.className = `${baseClass} ${state}`;
+  }
+}
+
+function setAngleRow(valueNode, markerNode, angle) {
+  setText(valueNode, angle?.label || "--.-°");
+  if (markerNode) {
+    markerNode.style.left = `${Math.max(0, Math.min(100, angle?.percent ?? 50))}%`;
+  }
+}
+
+function setWidthPercent(node, percent) {
+  if (node) {
+    node.style.width = `${clampPercent(percent)}%`;
+  }
+}
+
+function appendEventStreamEntry(entry) {
+  if (!rootNodes.eventStreamList) {
+    return;
+  }
+
+  const key = entry.key || `${entry.title}-${entry.detail}-${entry.timestamp || ""}`;
+  if (eventStreamKeys.has(key)) {
+    return;
+  }
+
+  eventStreamKeys.add(key);
+
+  const item = document.createElement("li");
+  item.className = `event-stream-item ${entry.status || "info"}`;
+  item.dataset.eventKey = key;
+
+  const dot = document.createElement("span");
+  dot.className = `status-dot ${statusToDotState(entry.status || "info")}`;
+
+  const body = document.createElement("div");
+  body.className = "event-stream-body";
+
+  const title = document.createElement("strong");
+  title.textContent = entry.title || "Status update";
+
+  const detail = document.createElement("p");
+  detail.textContent = entry.detail || "-";
+
+  const time = document.createElement("span");
+  time.className = "mono stable-date";
+  time.textContent = formatDate(entry.timestamp || new Date().toISOString());
+
+  body.append(title, detail, time);
+  item.append(dot, body);
+  rootNodes.eventStreamList.prepend(item);
+
+  while (rootNodes.eventStreamList.children.length > 10) {
+    const removed = rootNodes.eventStreamList.lastElementChild;
+    if (!removed) {
+      break;
+    }
+    eventStreamKeys.delete(removed.dataset.eventKey);
+    removed.remove();
+  }
+}
+
+function formatCount(value) {
+  return String(value).padStart(2, "0");
+}
+
+function clampPercent(value) {
+  const numericValue = toFiniteNumber(value) || 0;
+  return Math.max(0, Math.min(100, numericValue));
+}
+
+function statusToDotState(status) {
+  if (["online", "healthy", "info", "completed"].includes(status)) {
+    return "online";
+  }
+  if (["stale", "warning", "intermittent", "blocked"].includes(status)) {
+    return "stale";
+  }
+  return "offline";
+}
+
+function pickLatestTimestamp(values) {
+  return values
+    .map((value) => ({ value, date: parseDateTime(value) }))
+    .filter((item) => item.date)
+    .sort((a, b) => b.date.getTime() - a.date.getTime())[0]?.value;
 }
 
 function buildSectionMeta(count, source, options = {}) {
@@ -1157,6 +1925,66 @@ function formatElapsed(date) {
   return `${Math.floor(elapsedMinutes / 60)}h`;
 }
 
+function formatElapsedPrecise(date) {
+  const elapsedSeconds = Math.max(0, (Date.now() - date.getTime()) / 1000);
+  if (elapsedSeconds < 10) {
+    return `${elapsedSeconds.toFixed(1)}s`;
+  }
+  if (elapsedSeconds < 60) {
+    return `${Math.floor(elapsedSeconds)}s`;
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  return elapsedMinutes < 60 ? `${elapsedMinutes}m` : `${Math.floor(elapsedMinutes / 60)}h`;
+}
+
+function formatElapsedFixed(date) {
+  if (!date) {
+    return "--.-s";
+  }
+
+  const elapsedSeconds = Math.max(0, Math.min(999.9, (Date.now() - date.getTime()) / 1000));
+  return `${elapsedSeconds.toFixed(1).padStart(5, "0")}s`;
+}
+
+function formatSignedFixed(value, integerDigits, fractionDigits, suffix = "") {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return `--.${"-".repeat(fractionDigits)}${suffix}`;
+  }
+
+  const sign = numericValue >= 0 ? "+" : "-";
+  const absoluteValue = Math.abs(numericValue);
+  const fixed = absoluteValue.toFixed(fractionDigits);
+  const [integerPart, fractionPart] = fixed.split(".");
+  return `${sign}${integerPart.padStart(integerDigits, "0")}.${fractionPart}${suffix}`;
+}
+
+function formatMotorNumber(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return "-----";
+  }
+
+  if (Number.isInteger(numericValue)) {
+    return String(numericValue);
+  }
+
+  return numericValue.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatBooleanLike(value) {
+  if (value === undefined || value === null || value === "") {
+    return "-";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  return String(value);
+}
+
 function formatSensorValue(value, suffix = "") {
   if (value === undefined || value === null || value === "") {
     return "-";
@@ -1172,6 +2000,10 @@ function formatSensorValue(value, suffix = "") {
   }
 
   return `${String(value)}${suffix && String(value).endsWith(suffix.trim()) ? "" : suffix}`;
+}
+
+function formatVectorTriplet(vector) {
+  return ["x", "y", "z"].map((axis) => formatSensorValue(vector?.[axis])).join(" / ");
 }
 
 function normalizeError(error) {

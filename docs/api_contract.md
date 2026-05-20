@@ -217,7 +217,20 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
   },
   "motor": {
     "robot_id": "amr-001",
-    "status": "online"
+    "status": "ok",
+    "actual_rpm": 118.25,
+    "motor_state": "{\"target_rpm\":120.0,\"actual_rpm\":118.25,\"error_rpm\":1.75,\"pwm_duty\":0.4,\"direction\":1,\"control_enabled\":1,\"saturated\":0,\"timeout\":0,\"estop\":0,\"fault\":0,\"source\":\"target_rpm\",\"loop\":42}",
+    "freshness": {
+      "actual_rpm": {
+        "topic": "/motor/actual_rpm",
+        "status": "ok"
+      },
+      "motor_state": {
+        "topic": "/motor/state",
+        "status": "ok"
+      }
+    },
+    "last_update_time": "2026-05-18T10:00:00Z"
   },
   "imu": null
 }
@@ -231,10 +244,12 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 | `timestamp` | string | 状态快照生成时间 |
 | `tasks` | array | Dashboard Task 列表，复用 `/api/tasks` 的映射结果 |
 | `robot` | object | 机器人状态聚合，当前由 mock device status 与 MQTT 最新设备状态聚合得到 |
-| `motor` | object\|null | MQTT `robot/motor/status` 最新 payload |
+| `motor` | object\|null | MQTT `robot/motor/status` 最新 payload，当前对齐 `robot-state-monitor-v1` 的 `robot_status_api_bridge` 输出 |
 | `imu` | object\|null | MQTT `robot/imu` 最新 payload |
 
 前端 MPU6050 / IMU 区域会同时读取顶层 `imu` 和 `robot.mqtt.topics["robot/imu"]`。其中 `received_at` 用于展示 `last_seen` 并计算 freshness：超过 3 秒显示 `stale`，超过 10 秒显示 `offline`。
+
+前端 Motor / Encoder 区域会读取顶层 `motor` 或 `robot.mqtt.topics["robot/motor/status"].payload`。当前主要展示 `actual_rpm`，并容错解析 `motor_state` JSON 字符串里的 `target_rpm`、`actual_rpm`、`error_rpm`、`pwm_duty`、`direction`、`control_enabled`、`saturated`、`timeout`、`estop`、`fault`、`source`、`loop`。本地 N20 closed-loop bench CSV 字段如 `target_ticks_per_sec`、`measured_ticks_per_sec`、`encoder_count`、`invalid_transitions` 暂保留占位，只有后续被桥接到 payload 时才会显示。该区域不提供远程启动电机、设置 PWM 或下发目标速度能力。
 
 ## 9.1 MQTT RobotStatus
 
@@ -260,9 +275,22 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
       "received_at": "2026-05-19T10:00:00+00:00",
       "payload": {
         "robot_id": "amr-001",
-        "status": "online"
+        "status": "ok",
+        "actual_rpm": 118.25,
+        "motor_state": "{\"target_rpm\":120.0,\"actual_rpm\":118.25,\"error_rpm\":1.75,\"pwm_duty\":0.4,\"direction\":1,\"control_enabled\":1,\"saturated\":0,\"timeout\":0,\"estop\":0,\"fault\":0,\"source\":\"target_rpm\",\"loop\":42}",
+        "freshness": {
+          "actual_rpm": {
+            "topic": "/motor/actual_rpm",
+            "status": "ok"
+          },
+          "motor_state": {
+            "topic": "/motor/state",
+            "status": "ok"
+          }
+        },
+        "last_update_time": "2026-05-19T10:00:00Z"
       },
-      "payload_raw": "{\"robot_id\":\"amr-001\",\"status\":\"online\"}"
+      "payload_raw": "{\"robot_id\":\"amr-001\",\"status\":\"ok\",\"actual_rpm\":118.25}"
     },
     "robot/alarm": null
   },
@@ -271,7 +299,8 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
     "imu": null,
     "motor_status": {
       "robot_id": "amr-001",
-      "status": "online"
+      "status": "ok",
+      "actual_rpm": 118.25
     },
     "alarm": null,
     "devices": []
@@ -285,6 +314,7 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 - 该接口只读，不写数据库，不向 MQTT broker 发布控制命令。
 - broker 未连接时，`connection.status` 会显示 `disconnected` 或 `connecting`，各 topic 可为 `null`。
 - 前端 IMU 区域复用 `topics["robot/imu"].received_at` 作为 `last_seen`，并从 `robot.imu` 或该 topic 的 `payload` 读取 accel x/y/z、gyro x/y/z、temperature 与 state。
+- 前端 Motor / Encoder 区域复用 `topics["robot/motor/status"].received_at`、payload `last_update_time` 或 `freshness.*.last_received_time` 作为 freshness 时间；无真实 topic 时保留 null / placeholder 状态。
 
 ## 10. 设计原则
 

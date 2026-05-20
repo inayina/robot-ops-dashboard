@@ -39,6 +39,21 @@ class RobotStatusResponse(BaseModel):
     robot: dict[str, Any] = Field(description="Latest normalized robot status assembled from MQTT topics.")
 
 
+class MotorCommandRequest(BaseModel):
+    target_rpm: float = Field(default=0.0, description="Requested motor target RPM.")
+    enabled: bool = Field(default=True, description="Enable or disable the motor control path.")
+    closed_loop: bool = Field(default=True, description="Whether the motor loop should remain in closed-loop mode.")
+    max_pwm: float = Field(default=0.25, description="Maximum allowed PWM duty ratio.")
+    timeout_ms: int = Field(default=800, description="Command timeout window in milliseconds.")
+    stop: bool = Field(default=False, description="Emergency stop-style stop command; highest priority.")
+
+
+class MotorCommandResponse(BaseModel):
+    topic: str = Field(description="MQTT topic that received the command.")
+    published_at: str = Field(description="Backend publish timestamp.")
+    payload: dict[str, Any] = Field(description="Normalized command payload published to MQTT.")
+
+
 TaskPointName = Literal["station_a", "station_b", "dock_a", "start_zone"]
 
 

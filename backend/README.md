@@ -165,7 +165,7 @@ Backend 启动时会尝试连接 MQTT broker：
 - 覆盖方式：`MQTT_BROKER_URL=mqtt://127.0.0.1:1883`
 - 订阅 topic：`robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
 
-启动本地 broker 后，可以用仓库内 mock publisher 模拟电机状态：
+启动本地 broker 后，可以用仓库内 mock publisher 模拟 `robot_status_api_bridge` 的电机状态镜像：
 
 ```bash
 source .venv/bin/activate
@@ -178,7 +178,11 @@ python3 scripts/mock_mqtt_motor_status_publisher.py --interval 1
 curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 ```
 
-说明：该链路只订阅和展示状态，不向 MQTT broker 发布控制命令，不写数据库。
+说明：
+
+- 该链路只订阅和展示状态，不向 MQTT broker 发布控制命令，不写数据库。
+- `robot/motor/status` 当前对齐 `/home/ina/Documents/PlatformIO/Projects/robot-state-monitor-v1/ros2/robot_status_api_bridge`，包含 `status`、`actual_rpm`、`motor_state`、`freshness`、`last_update_time`。
+- `motor_state` 当前是 ROS 2 `/motor/state` 的原始 JSON 字符串，前端只做容错解析与展示；它不是远程启动电机、设置 PWM 或下发运动目标的接口。
 
 ## 接口列表
 
@@ -226,7 +230,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `topics`：每个订阅 topic 的最新消息，未收到时为 `null`
 - `robot.state`：来自 `robot/state`
 - `robot.imu`：来自 `robot/imu`
-- `robot.motor_status`：来自 `robot/motor/status`
+- `robot.motor_status`：来自 `robot/motor/status`，当前用于展示 `robot_status_api_bridge` 输出的电机状态镜像
 - `robot.alarm`：来自 `robot/alarm`
 
 ### `GET /api/wms/tasks`
@@ -277,13 +281,26 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
   },
   "motor": {
     "robot_id": "amr-001",
-    "status": "online"
+    "status": "ok",
+    "actual_rpm": 118.25,
+    "motor_state": "{\"target_rpm\":120.0,\"actual_rpm\":118.25,\"error_rpm\":1.75,\"pwm_duty\":0.4,\"direction\":1,\"control_enabled\":1,\"saturated\":0,\"timeout\":0,\"estop\":0,\"fault\":0,\"source\":\"target_rpm\",\"loop\":42}",
+    "freshness": {
+      "actual_rpm": {
+        "topic": "/motor/actual_rpm",
+        "status": "ok"
+      },
+      "motor_state": {
+        "topic": "/motor/state",
+        "status": "ok"
+      }
+    },
+    "last_update_time": "2026-05-18T10:00:00Z"
   },
   "imu": null
 }
 ```
 
-注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend。MQTT 只作为只读状态输入，不连接 ROS 2、ESP32 或真实硬件控制面。
+注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend。MQTT 只作为只读状态输入，不连接 ROS 2、ESP32 或真实硬件控制面。`motor` 当前用于 Motor / Encoder 状态卡片展示 `robot_status_api_bridge` 输出，不表示 Dashboard 可以远程启动电机或下发目标。
 
 ## 错误处理
 

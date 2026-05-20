@@ -24,11 +24,12 @@
 - 后端启动时连接本地 MQTT broker，默认 `mqtt://127.0.0.1:1883`
 - 订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`，并在内存中缓存最新消息
 - 新增 `GET /api/robot/status` 返回最新 MQTT 机器人状态快照
+- 新增 `POST /api/robot/motor/cmd`，由 backend 发布 MQTT `robot/motor/cmd`
 - 可通过环境变量切换数据源：`ROBOT_OPS_TASK_SOURCE=mock_json|amr_http`
 
-当前版本保留 V0.1 的基础能力，并允许通过 AMR HTTP API 创建 Mock WMS task；该能力仅限本地 Mock WMS 任务创建，不直接控制 Nav2、电机、底盘或真实机器人。
+当前版本保留 V0.1 的基础能力，并允许通过 AMR HTTP API 创建 Mock WMS task；同时新增一条受限的低频电机命令链路，用于 bench / dashboard 联调。
 
-当前 **不引入前端框架，不实现 Nav2 控制、电机控制、多机器人调度、复杂 WMS 逻辑、数据库持久化、ROS 2 bridge 或 AI 平台能力**。MQTT 仅用于订阅和展示状态，不向机器人发布控制指令。WebSocket 仅用于 Dashboard Backend 向 Frontend 推送状态快照。
+当前 **不引入前端框架，不实现 Nav2 控制、多机器人调度、复杂 WMS 逻辑、数据库持久化或把 frontend 直接接到 ROS 2 / MQTT**。电机控制仅通过 backend 的 `POST /api/robot/motor/cmd` 发布低频 MQTT 命令，WebSocket 仍只用于 Dashboard Backend 向 Frontend 推送状态快照。
 
 当前后端状态：
 
@@ -37,6 +38,7 @@
 - `/api/wms/tasks` 代理 AMR Mock WMS 的任务查询与创建
 - `/api/device-status` 与 `/api/alerts` 当前仍可继续返回 mock 数据
 - `/api/robot/status` 返回 MQTT 最新缓存状态；broker 不可用时返回 `disconnected` 连接状态
+- `/api/robot/motor/cmd` 接收前端控制请求，并发布受限 MQTT 命令到 `robot/motor/cmd`
 - `/ws/status` 推送统一 `dashboard_status` 消息，当前包含 `tasks`、`robot`，并在收到 MQTT 数据后带上最新 `motor` 与 `imu`
 
 当前前端状态：
@@ -45,13 +47,16 @@
 - 使用原生 HTML / CSS / JavaScript
 - 默认请求 Dashboard backend 的 `/api/tasks`、`/api/device-status`、`/api/alerts`
 - 同步请求 `/api/robot/status`，用于展示 MQTT `robot/imu` 最新缓存状态
+- 通过表单调用 Dashboard backend 的 `POST /api/robot/motor/cmd` 下发电机控制命令
 - 通过表单调用 Dashboard backend 的 `POST /api/wms/tasks` 创建 Mock WMS task
 - 可手动刷新 `GET /api/wms/tasks` 任务列表
 - 页面加载后连接 Dashboard backend 的 `/ws/status`
 - 保留每 3 秒 HTTP 自动刷新作为 WebSocket 断开时的 fallback
-- MQTT 新消息会通过现有 `/ws/status` 只读状态流推送到前端
-- 新增 MPU6050 / IMU 状态区域，展示 online/offline、last_seen、accel x/y/z、gyro x/y/z、temperature 与 state
-- 不提供 Nav2 控制、电机控制、多机器人调度或复杂 WMS 逻辑
+- MQTT 新消息会通过现有 `/ws/status` 状态流推送到前端
+- 实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream` 五张卡片，刷新时只更新字段和状态样式，避免录屏时布局跳动
+- MPU6050 / IMU 状态区域展示 source、ros_topic、mqtt_topic、online/stale/offline、last update、Roll/Pitch/Yaw、accel x/y/z、gyro x/y/z、temperature 与 state；无数据时保留占位内容
+- Motor / Encoder 状态区域展示 `target_rpm`、`measured_rpm`、`pwm`、`error_rpm`、`enabled`、`closed_loop`、`fault`、`max_pwm`、`timeout_ms`、`source`、`loop`，并保留现有 `motor_state` 容错显示
+- Motor / Encoder 卡片新增 `enable`、`target_rpm`、`max_pwm`、`timeout_ms`、`Apply`、`Stop` 控制入口，命令仍由 backend 做二次限幅和安全约束
 
 当前联调脚本状态：
 
@@ -63,7 +68,7 @@
 
 V0.1 到后续 V0.2 的首要工作，是优先对接 `amr_warehouse_navigation` 的 **Mock WMS HTTP API**，先把 AMR 任务流、任务状态和基础告警链路跑通。
 
-在此基础上，当前已先落地最小 MQTT 只读状态接入，后续仍预留两条扩展方向：
+在此基础上，当前已落地最小 MQTT 状态接入和受限电机命令链路，后续仍预留两条扩展方向：
 
 - 扩展 `ros2-robot-digital-twin` 项目的 MQTT / micro-ROS 下位机状态数据映射
 - 引入机器学习异常分类、LLM 诊断建议、YOLO 视觉检测结果展示
@@ -96,10 +101,10 @@ python3 -m http.server 8001
 说明：
 
 - Frontend 默认请求 `http://127.0.0.1:9000/api/tasks`
-- Frontend 默认连接 `ws://127.0.0.1:9000/ws/status` 接收只读状态流
+- Frontend 默认连接 `ws://127.0.0.1:9000/ws/status` 接收状态流
 - Frontend 通过 `POST /api/wms/tasks` 创建 Mock WMS task，并通过 `GET /api/wms/tasks` 手动刷新 WMS 任务列表
 - Frontend 每 3 秒保留 HTTP 自动刷新 fallback，便于录屏时观察新任务和状态变化
-- 这是 **Mock WMS demo**，不提供 Nav2 控制、电机控制或真实机器人控制
+- 这是 **Mock WMS + Motor Bench demo**，不提供 Nav2 控制，但提供受限的 dashboard -> backend -> MQTT 电机命令联调入口
 
 ### 一键启动本地 API 和页面
 
@@ -206,15 +211,17 @@ curl --noproxy '*' \
 - `pickup` 当前用于 Dashboard 生成 `task_name` 和前端展示；上游 Mock WMS 当前实际执行目标来自 `dropoff -> target_name`。
 - 如果上游拒绝某个目标点，例如当前 AMR Mock WMS 不接受 `start_zone` 作为 target，Dashboard 会返回上游错误。
 
-## MQTT Robot Status
+## MQTT Robot Status And Motor Cmd
 
 Dashboard backend 会在启动时尝试连接本地 MQTT broker：
 
 - 默认 broker：`mqtt://127.0.0.1:1883`
 - 可覆盖环境变量：`MQTT_BROKER_URL=mqtt://127.0.0.1:1883`
 - 订阅 topic：`robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
+- 发布 topic：`robot/motor/cmd`
 - 缓存位置：backend 进程内存，不写数据库
 - HTTP 接口：`GET /api/robot/status`
+- HTTP 控制接口：`POST /api/robot/motor/cmd`
 
 推荐启动顺序：
 
@@ -231,7 +238,7 @@ source .venv/bin/activate
 uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
 ```
 
-3. 在另一个终端启动 mock motor publisher：
+3. 在另一个终端启动 mock motor publisher，用于模拟 `robot_status_api_bridge` 的 `robot/motor/status` 状态镜像：
 
 ```bash
 source .venv/bin/activate
@@ -252,9 +259,80 @@ mosquitto_sub -h 127.0.0.1 -t 'robot/#' -v
 
 说明：
 
-- MQTT 当前只消费状态，不发布控制指令。
+- `robot/motor/status` 当前对齐 `/home/ina/Documents/PlatformIO/Projects/robot-state-monitor-v1/ros2/robot_mqtt_bridge`：payload 包含 `status`、`target_rpm`、`measured_rpm`、`pwm`、`enabled`、`closed_loop`、`fault`、`motor_state`、`last_update_time`。
+- `motor_state` 当前仍保留为结构化容错字段，便于前端兼容显示。
+- `POST /api/robot/motor/cmd` 只发布低频受限命令，backend 会先约束 `target_rpm`、`max_pwm`、`timeout_ms`，并保留 `stop` 最高优先级。
 - broker 未启动时，backend 仍可启动，`/api/robot/status` 会显示 MQTT 连接状态为 `disconnected` 或 `connecting`。
 - 前端已有 `/ws/status`，收到 MQTT 新消息后 backend 会通过该 WebSocket 推送新的 `dashboard_status` 快照。
+
+### micro-ROS IMU 状态链路
+
+当前 IMU -> Dashboard 的主链路是 micro-ROS，而不是 ESP32 直接 MQTT：
+
+```text
+STM32 + MPU6050
+  -> UART
+  -> ESP32-S3
+  -> micro-ROS / Wi-Fi UDP
+  -> PC micro-ROS Agent
+  -> ROS 2 topics: /imu/data, /imu/filtered, /robot/state
+  -> PC ROS 2 -> MQTT bridge
+  -> MQTT robot/imu
+  -> Dashboard backend
+  -> /api/robot/status and /ws/status
+  -> Frontend
+```
+
+边界说明：
+
+- micro-ROS 是下位机数据进入 ROS 2 的主链路。
+- MQTT 只是 PC 端把 ROS 2 IMU topic 低频镜像到 Dashboard 的展示链路。
+- ESP32 当前不直接发布 MQTT，也不需要配置 MQTT broker。
+- Dashboard 只消费状态，不参与电机控制，不下发 `/cmd_vel` 或 `/motor/target_rpm`。
+
+可以使用仓库脚本启动只读联调链路：
+
+```bash
+./scripts/start_microros_sensor_stack.sh
+```
+
+默认启动或复用：
+
+- MQTT broker：`mqtt://127.0.0.1:1883`
+- micro-ROS Agent：`udp4 --port 8888`
+- ROS 2 topic wait：等待 `/imu/data` 或 `/imu/filtered`
+- ROS 2 -> MQTT bridge：订阅检测到的 IMU topic，低频发布到 `robot/imu`
+- Dashboard backend：`http://127.0.0.1:9000`
+- Frontend 页面：`http://127.0.0.1:8001/frontend/`
+
+常用参数：
+
+```bash
+# 如果想固定订阅某个 IMU topic
+./scripts/start_microros_sensor_stack.sh --imu-topic /imu/data
+
+# 如果需要临时使用 serial Agent 调试
+./scripts/start_microros_sensor_stack.sh --transport serial --dev /dev/ttyACM0
+
+# 查看状态
+./scripts/start_microros_sensor_stack.sh --status
+
+# 只做配置自检，不启动进程
+./scripts/start_microros_sensor_stack.sh --check
+
+# 停止本脚本启动的进程
+./scripts/start_microros_sensor_stack.sh --stop
+```
+
+说明：
+
+- 该脚本按 `micro-ROS Agent -> 等待 IMU ROS 2 topic -> ROS 2 -> MQTT bridge` 的顺序启动。
+- `microros_imu_to_mqtt_bridge.py` 只订阅 ROS 2 IMU topic，只发布 MQTT `robot/imu`，不读取串口，不依赖 ESP32 直接 MQTT。
+- bridge 默认做低频镜像，避免把高频 IMU 全量压到 Dashboard。
+- Dashboard backend 仍只消费 MQTT `robot/imu`，不直接依赖 ROS 2 或 micro-ROS。
+- motor 控制仍保持 ROS 2 topic -> ESP32 micro-ROS -> 本地控制的设计，不通过 Dashboard 或 MQTT 下发。
+- 只有使用 `--transport serial` 时才需要串口权限；默认 UDP 模式不读取 `/dev/ttyACM0`。
+- 日志默认保存在 `/tmp/robot_ops_microros_sensor_stack/`。
 
 ## WebSocket Status Stream
 
@@ -277,7 +355,20 @@ Dashboard backend 提供只读 WebSocket 状态流：
   },
   "motor": {
     "robot_id": "amr-001",
-    "status": "online"
+    "status": "ok",
+    "actual_rpm": 118.25,
+    "motor_state": "{\"target_rpm\":120.0,\"actual_rpm\":118.25,\"error_rpm\":1.75,\"pwm_duty\":0.4,\"direction\":1,\"control_enabled\":1,\"saturated\":0,\"timeout\":0,\"estop\":0,\"fault\":0,\"source\":\"target_rpm\",\"loop\":42}",
+    "freshness": {
+      "actual_rpm": {
+        "topic": "/motor/actual_rpm",
+        "status": "ok"
+      },
+      "motor_state": {
+        "topic": "/motor/state",
+        "status": "ok"
+      }
+    },
+    "last_update_time": "2026-05-18T10:00:00Z"
   },
   "imu": null
 }
@@ -288,7 +379,8 @@ Dashboard backend 提供只读 WebSocket 状态流：
 - `/api/tasks`、`/api/device-status`、`/api/alerts` 继续保留，验证脚本仍通过 HTTP 验证。
 - `motor` 与 `imu` 来自 MQTT 最新缓存；尚未收到对应 topic 时返回 `null`。
 - 前端 IMU 区域同时复用 `/api/robot/status` 与 `/ws/status`；按 `robot/imu` 最新 `received_at` 判断 freshness：超过 3 秒显示 `stale`，超过 10 秒显示 `offline`。
-- IMU 区域只展示状态，不新增控制按钮，不向 MQTT broker 发布消息。
+- 前端 Motor / Encoder 区域展示 `robot_status_api_bridge` 的 motor 状态镜像；无真实 motor topic 时保留 placeholder / disconnected 状态。
+- IMU 与 Motor / Encoder 区域只展示状态，不新增控制按钮，不向 MQTT broker 发布消息。
 
 ## AMR 四点录屏脚本
 

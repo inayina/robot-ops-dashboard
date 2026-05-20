@@ -25,12 +25,15 @@ from .schemas import (
     DashboardStatusMessage,
     ErrorResponse,
     HealthResponse,
+    MotorCommandRequest,
+    MotorCommandResponse,
     MockEnvelope,
     RobotStatusResponse,
     WmsTaskCreateRequest,
 )
 from .services.mock_data_service import MockDataError, MockDataService
 from .services.amr_http_service import AmrHttpService, AmrHttpError
+from .services.mqtt_motor_command import MotorCommandPublishError, RobotMqttMotorCommandService
 from .services.mqtt_robot_status import RobotMqttStatusService
 from .services import task_mapper
 
@@ -38,6 +41,11 @@ mock_data_service = MockDataService()
 mqtt_status_service = RobotMqttStatusService(
     broker_url=config.MQTT_BROKER_URL,
     topics=config.MQTT_TOPICS,
+    keepalive_seconds=config.MQTT_KEEPALIVE_SECONDS,
+)
+mqtt_motor_command_service = RobotMqttMotorCommandService(
+    broker_url=config.MQTT_BROKER_URL,
+    topic=config.MQTT_MOTOR_CMD_TOPIC,
     keepalive_seconds=config.MQTT_KEEPALIVE_SECONDS,
 )
 
@@ -206,6 +214,46 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def clamp_float(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def clamp_int(value: int, min_value: int, max_value: int) -> int:
+    return max(min_value, min(max_value, value))
+
+
+def build_motor_command_payload(request: MotorCommandRequest) -> dict[str, Any]:
+    stop = bool(request.stop)
+    target_rpm = clamp_float(
+        float(request.target_rpm),
+        -config.MOTOR_CMD_MAX_ABS_RPM,
+        config.MOTOR_CMD_MAX_ABS_RPM,
+    )
+    max_pwm = clamp_float(
+        float(request.max_pwm),
+        0.0,
+        config.MOTOR_CMD_MAX_PWM_LIMIT,
+    )
+    timeout_ms = clamp_int(
+        int(request.timeout_ms),
+        config.MOTOR_CMD_MIN_TIMEOUT_MS,
+        config.MOTOR_CMD_MAX_TIMEOUT_MS,
+    )
+
+    return {
+        "robot_id": config.ROBOT_ID,
+        "source": "dashboard_backend",
+        "command_id": f"motor_cmd_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
+        "issued_at": utc_now_iso(),
+        "target_rpm": 0.0 if stop else target_rpm,
+        "enabled": bool(request.enabled),
+        "closed_loop": bool(request.closed_loop),
+        "max_pwm": max_pwm,
+        "timeout_ms": timeout_ms,
+        "stop": stop,
+    }
+
+
 def load_tasks_envelope() -> MockEnvelope:
     mode = config.ROBOT_OPS_TASK_SOURCE
     if mode == "mock_json":
@@ -371,6 +419,23 @@ async def get_alerts() -> MockEnvelope:
 @app.get("/api/robot/status", response_model=RobotStatusResponse)
 async def get_robot_status() -> RobotStatusResponse:
     return build_robot_status_response()
+
+
+@app.post("/api/robot/motor/cmd", response_model=MotorCommandResponse)
+async def publish_motor_command(request: MotorCommandRequest) -> MotorCommandResponse:
+    payload = build_motor_command_payload(request)
+
+    try:
+        result = mqtt_motor_command_service.publish_motor_command(payload)
+    except MotorCommandPublishError as exc:
+        raise_api_error(
+            status_code=502,
+            error_type="motor_command_publish_error",
+            detail=str(exc),
+            path=config.MQTT_MOTOR_CMD_TOPIC,
+        )
+
+    return MotorCommandResponse(**result)
 
 
 @app.get("/api/wms/tasks")

@@ -74,9 +74,23 @@ env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest backend/tests -q
 - `GET /api/robot/status` 返回最新缓存状态
 - 前端 IMU 区域能从 `/api/robot/status` 与 `/ws/status` 读取 `robot/imu` 最新缓存
 - IMU `last_seen` 超过 3 秒显示 `stale`，超过 10 秒显示 `offline`
-- `robot/motor/status` mock publisher 可向本地 broker 发布测试数据
+- 前端静态检查：`node --check frontend/app.js`
+- 前端布局稳定性检查：打开前端观察 30 秒，确认 `/ws/status` 刷新时 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream` 卡片顺序、位置和高度不跳动
+- IMU 实时刷新检查：当 `last_message_at` 持续刷新时，仅数字、状态灯、水平条和姿态方块变化，Roll/Pitch/Yaw 保持固定三行占位
+- `robot/motor/status` mock publisher 可向本地 broker 发布对齐 `robot_status_api_bridge` 的测试数据，前端能解析 `motor_state` JSON 字符串
 - 消息断流后的离线判定
 - micro-ROS 桥接字段映射
+- `scripts/start_microros_sensor_stack.sh` 可启动 micro-ROS agent 与 ROS 2 -> MQTT bridge，并保持 Dashboard backend 只通过 MQTT 读取状态
+- `scripts/start_microros_sensor_stack.sh --check` 可在不启动进程的情况下验证脚本语法、bridge 编译、micro-ROS Agent、ROS 2 topic 与 MQTT broker 可用性
+- 端到端验证 IMU -> Dashboard 状态推送链路：
+  1. 启动 Dashboard backend 和 MQTT broker
+  2. 运行 `./scripts/start_microros_sensor_stack.sh`
+  3. 复位 ESP32-S3，让其通过 micro-ROS / Wi-Fi UDP 连接 PC micro-ROS Agent
+  4. 确认 `ros2 topic hz /imu/data` 正常；如使用滤波数据，确认 `ros2 topic hz /imu/filtered` 正常
+  5. 确认 `mosquitto_sub -h 127.0.0.1 -t robot/imu -v` 能收到 PC bridge 镜像后的 IMU 数据
+  6. 确认 `curl --noproxy '*' http://127.0.0.1:9000/api/robot/status` 能看到 `robot.imu` 和 `topics["robot/imu"].received_at`
+  7. 确认前端通过 `/ws/status` 刷新 IMU freshness
+  8. 确认没有新增 MQTT 控制链路：不通过 MQTT 下发 `/cmd_vel`、`/motor/target_rpm`，Dashboard 不直接控制电机
 - 同一机器人多子系统状态聚合
 - 设备告警生成正确性
 
