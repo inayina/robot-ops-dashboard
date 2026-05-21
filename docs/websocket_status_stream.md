@@ -22,7 +22,7 @@
 - 不新增机器人控制接口
 - 不新增 `POST /tasks`
 - 不接入 ROS 2、Nav2、Gazebo 或 ESP32
-- 不通过 MQTT 发布控制指令
+- 不通过 WebSocket 发布控制指令
 - 不修改 `amr_warehouse_navigation` 或 `ros2-robot-digital-twin`
 
 ## 数据来源
@@ -87,6 +87,7 @@ WebSocket 状态流仍通过 Dashboard Backend 内部既有读取逻辑获得数
 - 如果后端生成状态快照时无法读取上游 AMR HTTP API，WebSocket 发送只读错误快照，不对上游产生写入或控制副作用。
 - 如果 MQTT broker 未连接，`robot.mqtt.connection.status` 会显示 `disconnected` 或 `connecting`，不会影响 AMR HTTP 只读接口。
 - IMU 区域按 `robot/imu` 最新 `received_at` 判断状态：超过 3 秒无新消息显示 `stale`，超过 10 秒显示 `offline`。
+- 电机控制仍走独立的 `POST /api/robot/motor/cmd`，不会复用 `/ws/status`。
 
 ## 后续集成预留
 

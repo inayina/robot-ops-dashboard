@@ -13,7 +13,7 @@
 
 ## 1.1 当前最小实现
 
-当前仓库已实现最小 MQTT 只读接入，用于本地验证设备状态链路。需要特别区分：micro-ROS 是下位机数据进入 ROS 2 的主链路，MQTT 只是 PC 端从 ROS 2 topic 镜像到 Dashboard 的展示链路。
+当前仓库已实现 MQTT 状态接入，并补齐了受限的 motor command 发布能力。需要特别区分：micro-ROS 是下位机数据进入 ROS 2 的主链路，MQTT 既承接 PC 端状态镜像，也承接 Dashboard backend 的低频 motor command 发布。
 
 - Backend 启动时连接 MQTT broker，默认 `mqtt://127.0.0.1:1883`
 - 订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
@@ -21,11 +21,12 @@
 - 提供 `GET /api/robot/status` 返回最新缓存状态
 - 如果前端连接了 `/ws/status`，MQTT 新消息会触发新的 `dashboard_status` 快照推送
 - 前端 MPU6050 / IMU 区域复用 `/api/robot/status` 与 `/ws/status` 展示 `robot/imu` 最新状态
+- 提供 `POST /api/robot/motor/cmd`，由 backend 发布低频 MQTT `robot/motor/cmd`
 - 提供 `scripts/mock_mqtt_motor_status_publisher.py` 模拟发布 `robot/motor/status`
 - 提供 `scripts/start_microros_sensor_stack.sh` 一键启动 micro-ROS agent、ROS 2 -> MQTT bridge、Dashboard backend 与前端页面
 - 提供 `scripts/microros_imu_to_mqtt_bridge.py` 将 ROS 2 IMU topic 只读桥接到 MQTT `robot/imu`
 
-该实现仍属于 `read-only monitoring`，不发布控制指令，不控制 Nav2、电机或真实机器人，不做数据库持久化。ESP32 当前不直接发布 MQTT，Dashboard 也不通过 MQTT 下发 `/cmd_vel`、`/motor/target_rpm` 或任何电机控制目标。
+该实现仍不控制 Nav2，也不承担底盘级高频闭环控制，不做数据库持久化。ESP32 当前不直接发布 MQTT；Dashboard backend 会通过 MQTT 下发显式的 `robot/motor/cmd`，但不下发 `/cmd_vel`。
 
 ## 1.2 micro-ROS 本地联调脚本
 
@@ -96,16 +97,21 @@ STM32 + MPU6050
 
 ## 3. 接入原则
 
-### 3.1 订阅与展示，不直接控制
+### 3.1 订阅为主，电机控制保持显式且受限
 
-本仓库后续可以消费 MQTT / micro-ROS 数据，但不直接承担：
+本仓库可以消费 MQTT / micro-ROS 数据，也可以通过显式接口发布低频 motor command，但不直接承担：
 
-- 电机控制
 - 执行器控制
 - Nav2 控制
 - 下位机配置与烧录
 
-控制链路保持在机器人侧：motor 控制仍然是 ROS 2 topic -> ESP32 micro-ROS -> 本地控制。Dashboard 不通过 MQTT 下发 `/cmd_vel`、`/motor/target_rpm`，也不直接控制电机。
+当前 motor command 链路是：
+
+- frontend `POST /api/robot/motor/cmd`
+- backend 限幅和补全字段
+- MQTT `robot/motor/cmd`
+
+这条链路适合本地 bench / dashboard 联调；ROS 2、桥接器或下位机如何消费该 topic，仍由外部系统负责。Dashboard 不通过 MQTT 下发 `/cmd_vel`。
 
 ### 3.2 统一映射到 DeviceStatus
 
@@ -140,6 +146,7 @@ STM32 + MPU6050
 - `robot/imu`
 - `robot/motor/status`
 - `robot/alarm`
+- `robot/motor/cmd`（backend publish）
 
 后续可根据 `ros2-robot-digital-twin` 实际实现扩展更细粒度的 topic。
 
@@ -188,7 +195,7 @@ micro-ROS 侧更适合提供底层子系统细粒度状态，例如：
 - 超过 3 秒没有新 IMU 消息时显示 `stale`
 - 超过 10 秒没有新 IMU 消息时显示 `offline`
 - Event Stream 只保留最近 10 条状态事件，追加新事件时不重建整个页面
-- 该区域只读展示，不提供控制按钮，也不向 MQTT broker 发布消息
+- 该区域当前已提供受限控制按钮；状态展示仍来自 `robot/motor/status`，命令发布走独立的 `POST /api/robot/motor/cmd`
 
 这部分逻辑后续是设备告警的重要来源。
 

@@ -9,7 +9,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 | 数据源 | 上游项目/系统 | 传输方式 | 优先级 | 当前状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | AMR 任务流 / Mock WMS task | `amr_warehouse_navigation` Mock WMS API | HTTP | 最高 | 已有任务读取与最小 task creation proxy | 用于任务页、总览页、告警页、本地演示 |
-| 机器人设备状态 | `ros2-robot-digital-twin` / 本地 MQTT mock | MQTT | 高 | 已有最小只读接入 | 用于设备页、告警页 |
+| 机器人设备状态与电机联调 | `ros2-robot-digital-twin` / 本地 MQTT mock | MQTT | 高 | 已有状态接入与受限 motor command | 用于设备页、告警页、bench 联调 |
 | 下位机状态 | `ros2-robot-digital-twin` / micro-ROS | micro-ROS 桥接 | 高 | 后续预留 | 用于底盘、传感器、安全模块状态 |
 | 测试执行结果 | 测试脚本/验证流水线 | 文件或 HTTP | 中 | 后续规划 | 用于测试验证页 |
 | AI 异常结果 | ML / LLM / YOLO 服务 | HTTP 或消息流 | 中 | 后续预留 | 用于 AI 扩展页 |
@@ -30,9 +30,10 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 
 ## 4. 第二阶段数据源
 
-当任务流稳定后，优先补充设备层可观测性。当前已先实现最小 MQTT 只读链路：
+当任务流稳定后，优先补充设备层可观测性。当前已先实现 MQTT 状态链路，并补齐低频 motor command：
 
 - MQTT 设备状态流：订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`
+- MQTT 电机命令流：发布 `robot/motor/cmd`
 - micro-ROS 下位机状态
 
 这两类数据会让 Dashboard 从“任务看板”升级为“系统运维看板”。
@@ -102,7 +103,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 
 - 只提供最小 Mock WMS task creation proxy，不负责完整 WMS 业务单据
 - 不负责驱动 Nav2 执行
-- 不负责驱动电机
+- 不负责底盘级高频电机闭环控制
 - 不负责承载完整 AI 推理服务
 
 这里只负责把这些系统的关键信息聚合成统一视图。

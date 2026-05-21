@@ -4,29 +4,46 @@
 
 本文件描述 `robot-ops-dashboard` 的统一数据契约，用于隔离上游数据源差异。
 
-V0.1 只定义契约与 Mock 数据，不实现真实接口。后续无论数据来自 HTTP、MQTT、micro-ROS 还是 AI 服务，都建议先映射到本文档定义的统一结构。
+当前阅读口径：
+
+- 当前主线仍是监控聚合
+- 当前代码已实现 WMS task proxy、motor command、WebSocket 等显式接口
+- 本文档需要同时描述只读监控契约和受限交互契约
+
+后续无论数据来自 HTTP、MQTT、micro-ROS 还是 AI 服务，都建议先映射到本文档定义的统一结构。
 
 ## 2. 接口风格
 
-建议优先采用只读查询接口，面向 Dashboard 展示层输出；当前仅对 Mock WMS task creation 增加最小 HTTP proxy：
+建议优先采用只读查询接口，面向 Dashboard 展示层输出；同时允许少量显式交互接口承接本地演示和受限控制需求。
+
+当前已实现的监控接口：
+
+- `GET /health`
+- `GET /api/tasks`
+- `GET /api/device-status`
+- `GET /api/alerts`
+- `GET /api/robot/status`
+
+当前已实现的显式交互接口：
 
 - `GET /api/v0/summary`
 - `GET /api/v0/tasks`
 - `GET /api/v0/device-status`
 - `GET /api/v0/alerts`
-- `GET /api/robot/status`
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
+- `POST /api/robot/motor/cmd`
 - `GET /api/v0/ai-insights`
 - `WebSocket /ws/status`
 
 说明：
 
-- `V0.1` 仅为建议契约，不代表已实现
-- 本仓库当前阶段不提供 Nav2 控制、电机控制或真实机器人控制接口
+- `GET /api/v0/...` 仍是早期建议命名，不代表当前已实现
+- 当前代码不提供 Nav2 控制或完整机器人控制平面
 - `POST /api/wms/tasks` 仅用于创建上游 AMR Mock WMS task，不承担多机器人调度或完整 WMS 逻辑
-- `/ws/status` 仅用于 Dashboard Backend 向 Frontend 推送只读状态快照，不替代 HTTP REST API
-- `/api/robot/status` 为最小 MQTT 只读状态接口，只返回 backend 内存中缓存的最新消息，不提供控制能力
+- `POST /api/robot/motor/cmd` 当前已实现，用于低频受限电机控制
+- `/ws/status` 仅用于 Dashboard Backend 向 Frontend 推送状态快照，不替代 HTTP REST API
+- `/api/robot/status` 为 MQTT 状态读取接口，只返回 backend 内存中缓存的最新消息
 
 ## 3. 通用响应结构
 
@@ -311,7 +328,7 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 说明：
 
 - 当前订阅 topic 固定为 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`。
-- 该接口只读，不写数据库，不向 MQTT broker 发布控制命令。
+- 该接口本身只读，不写数据库；电机控制由独立的 `POST /api/robot/motor/cmd` 承担。
 - broker 未连接时，`connection.status` 会显示 `disconnected` 或 `connecting`，各 topic 可为 `null`。
 - 前端 IMU 区域复用 `topics["robot/imu"].received_at` 作为 `last_seen`，并从 `robot.imu` 或该 topic 的 `payload` 读取 accel x/y/z、gyro x/y/z、temperature 与 state。
 - 前端 Motor / Encoder 区域复用 `topics["robot/motor/status"].received_at`、payload `last_update_time` 或 `freshness.*.last_received_time` 作为 freshness 时间；无真实 topic 时保留 null / placeholder 状态。
@@ -320,7 +337,7 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 
 统一契约需要坚持以下原则：
 
-1. 状态数据优先只读，Mock WMS task creation 必须保持显式 HTTP proxy
+1. 状态数据优先通过只读接口暴露，写入或控制能力必须走显式接口
 2. 统一模型优先于上游原始字段
 3. 原始状态需要保留 `source_status`
 4. AI 输出必须携带证据与置信度
@@ -331,6 +348,6 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 本文档定义的是 Dashboard 的展示型数据契约，不代表本仓库承担以下职责：
 
 - Nav2 控制平面
-- 电机控制平面
+- 完整电机控制平面
 - 完整 WMS 业务接口
 - 完整 AI 训练与推理平台接口

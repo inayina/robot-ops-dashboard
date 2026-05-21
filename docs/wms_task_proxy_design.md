@@ -1,5 +1,11 @@
 # WMS 任务下发 Proxy 设计
 
+## 文档状态
+
+本文件描述的 Mock WMS task proxy 已在当前代码中实现。
+
+`POST /api/wms/tasks` 当前用于本地演示和接口映射验证，但它确实是当前可用功能，而不是单纯保留中的草案。
+
 ## 1. 目标
 
 在 Dashboard 中新增一个最小 Mock WMS 任务创建入口，用于本地演示：

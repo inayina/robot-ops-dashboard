@@ -12,68 +12,242 @@
 - 异常告警聚合与排障辅助
 - 后续 AI 分析结果展示与诊断建议承载
 
+## Related Repositories / 项目入口
+
+- Main demo portal: [robot-ops-dashboard](./)
+  统一展示入口，负责任务创建、状态监控、WebSocket 推送、IMU / Motor / Event Stream 可视化。
+- AMR navigation core: [amr_warehouse_navigation](https://github.com/inayina/amr_warehouse_navigation)
+  基于 ROS 2 Jazzy + Gazebo Harmonic + Nav2 + Mock WMS，负责固定任务点、任务创建 / 查询 / 执行、导航执行和状态回写。
+- Embedded digital twin core: [ros2-robot-digital-twin](https://github.com/inayina/ros2-robot-digital-twin)
+  基于 STM32 + ESP32-S3 + micro-ROS + ROS 2 + MQTT，负责 IMU 状态、robot state、电机状态与 dashboard 联调链路。
+
+## System Layered Architecture / 系统分层架构
+
+下图从 GitHub 首页视角整理当前系统的自上而下分层关系。`robot-ops-dashboard` 是主展示入口，`amr_warehouse_navigation` 和 `ros2-robot-digital-twin` 是两个核心机器人子系统。
+
+```mermaid
+flowchart TD
+  subgraph L1["1. Frontend / Visualization Layer"]
+    F1["Dashboard Frontend"]
+    F2["Task List"]
+    F3["IMU Status Card"]
+    F4["Motor / Encoder Card"]
+    F5["Event Stream"]
+    F1 --> F2
+    F1 --> F3
+    F1 --> F4
+    F1 --> F5
+  end
+
+  subgraph L2["2. Backend / API Layer"]
+    B1["Dashboard Backend FastAPI"]
+    B2["REST APIs"]
+    B3["WebSocket /ws/status"]
+    B4["Safety-limited motor command entry"]
+    B5["Runtime status cache"]
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    B1 --> B5
+  end
+
+  subgraph L3["3. Messaging / Integration Layer"]
+    M1["MQTT topics"]
+    M2["robot/imu"]
+    M3["robot/state"]
+    M4["robot/motor/cmd"]
+    M5["robot/motor/status"]
+    M6["ROS 2 to MQTT bridge"]
+    M1 --> M2
+    M1 --> M3
+    M1 --> M4
+    M1 --> M5
+    M6 --> M1
+  end
+
+  subgraph L4["4. ROS 2 / Robot Software Layer"]
+    R1["ROS 2 topics"]
+    R2["/imu/data"]
+    R3["/imu/filtered"]
+    R4["/robot/state"]
+    R5["/motor/cmd"]
+    R6["/motor/status"]
+    R7["Nav2 NavigateToPose"]
+    R8["Mock WMS executor / task runner"]
+    R1 --> R2
+    R1 --> R3
+    R1 --> R4
+    R1 --> R5
+    R1 --> R6
+    R8 --> R7
+  end
+
+  subgraph L5["5. Edge Controller Layer"]
+    E1["ESP32-S3 micro-ROS bridge"]
+    E2["motor_control_task"]
+    E3["IMU / robot state forwarding"]
+    E4["motor command handling"]
+    E5["encoder status publishing"]
+    E1 --> E2
+    E1 --> E3
+    E2 --> E4
+    E2 --> E5
+  end
+
+  subgraph L6["6. Hardware / Simulation Layer"]
+    H1["STM32 + MPU6050"]
+    H2["TB6612 motor driver"]
+    H3["N20 motor with encoder"]
+    H4["Gazebo AMR"]
+    H5["SQLite Mock WMS task database"]
+    H2 --> H3
+  end
+
+  F1 -->|"task create / status query / motor cmd"| B1
+  B3 -->|"status push"| F1
+
+  B4 -->|"command down"| M4
+  M2 -->|"status up"| B5
+  M3 -->|"status up"| B5
+  M5 -->|"status up"| B5
+
+  R2 --> M6
+  R3 --> M6
+  R4 --> M6
+  M4 --> R5
+  R6 --> M6
+
+  E3 --> R2
+  E3 --> R3
+  E3 --> R4
+  R5 --> E4
+  E5 --> R6
+
+  H1 --> E3
+  E4 --> H2
+  H3 --> E5
+  H5 --> R8
+  R8 --> H5
+  R7 --> H4
+```
+
+- Frontend / Visualization Layer 负责 GitHub 首页和演示中的第一视角展示，只渲染任务、IMU、电机和事件流，不直接连接 ROS 2、MQTT 或硬件。
+- Backend / API Layer 是 dashboard 的观察层和受限控制入口，统一承接 REST、`/ws/status`、状态缓存以及低频受限 motor command。
+- Messaging / Integration Layer 负责把 ROS 2 状态镜像到 MQTT，并把 dashboard 发出的受限命令下传到机器人链路，是前后端与机器人子系统之间的集成层。
+- ROS 2 / Robot Software Layer 对应两个核心机器人子系统中的软件面：AMR 导航侧负责 Mock WMS task runner 和 `Nav2 NavigateToPose`，digital twin 侧负责 IMU、robot state、motor topic 链路。
+- Edge Controller Layer 当前以 ESP32-S3 为主，承担 micro-ROS bridge、motor command handling、encoder status publishing；电机控制链路不在 STM32 侧闭环完成。
+- Hardware / Simulation Layer 同时包含真实 bench 硬件和仿真资源：STM32 + MPU6050 提供姿态 / 状态上行，TB6612 + N20 对应电机台架，Gazebo AMR 与 SQLite Mock WMS task database 对应 AMR 演示链路。
+
+## System Data Flow / 系统数据流
+
+下图只展示当前已经存在并完成联调的真实链路，不虚构多机器人调度、完整商业 WMS、AI 诊断闭环或 `ros2_control` 能力。
+
+```mermaid
+flowchart TD
+  subgraph A["A. AMR Mock WMS 任务链路"]
+    A1["Dashboard Frontend"] --> A2["Dashboard Backend FastAPI"]
+    A2 --> A3["AMR Mock WMS HTTP API"]
+    A3 --> A4["SQLite tasks"]
+    A4 --> A5["mock_wms_executor / mock_wms_task_runner"]
+    A5 --> A6["Nav2 NavigateToPose"]
+    A6 --> A7["Gazebo AMR"]
+    A7 --> A8["task status writeback"]
+    A8 --> A9["Dashboard task list"]
+  end
+
+  subgraph B["B. IMU / robot state 状态上行链路"]
+    B1["STM32 MPU6050 / state output"] --> B2["ESP32-S3 micro-ROS bridge"]
+    B2 --> B3["ROS 2 topics /imu/data, /imu/filtered, /robot/state"]
+    B3 --> B4["ROS 2 to MQTT bridge"]
+    B4 --> B5["MQTT topics robot/imu, robot/state"]
+    B5 --> B6["Dashboard Backend cache"]
+    B6 --> B7["WebSocket /ws/status"]
+    B7 --> B8["Dashboard Frontend IMU Status card"]
+  end
+
+  subgraph C["C. Motor / Encoder 状态与命令链路"]
+    C1["Dashboard Frontend Motor card"] --> C2["POST /api/robot/motor/cmd"]
+    C2 --> C3["Dashboard Backend safety limit"]
+    C3 --> C4["MQTT robot/motor/cmd"]
+    C4 --> C5["ROS 2 /motor/cmd"]
+    C5 --> C6["ESP32 motor_control_task"]
+    C6 --> C7["TB6612 / N20 motor bench"]
+    C7 --> C8["ROS 2 /motor/status"]
+    C8 --> C9["MQTT robot/motor/status"]
+    C9 --> C10["Dashboard Backend"]
+    C10 --> C11["Dashboard Frontend Motor / Encoder card"]
+  end
+```
+
+## Current Scope / 当前边界
+
+- Dashboard frontend 不直接连接 ROS 2、Nav2 或 MQTT，所有页面状态都通过 Dashboard backend 汇聚。
+- Dashboard backend 是上层观察层和受限控制入口，负责 HTTP adapter、状态缓存、WebSocket 推送和受限命令转发。
+- AMR 仓库当前只做固定任务点、Mock WMS、Nav2 执行和状态回写。
+- Digital twin 仓库当前负责 IMU、robot state、motor status / motor cmd 的 micro-ROS / MQTT 链路。
+- 当前 motor command 是 bench / demo 用的低频受限命令链路，不是完整底盘安全控制系统。
+- 当前不包含完整 WMS、多机器人调度、商业订单系统、权限系统、AI 诊断闭环。
+
 ## 当前阶段
 
-当前版本已推进到 `V0.2` 的 AMR HTTP 集成，并新增最小 MQTT 设备状态接入与 Mock WMS 任务创建入口，主要能力包括：
+当前仓库主线仍然是 monitoring-first，但当前代码已经不止只读展示。
 
-- 支持通过 HTTP 读取 `amr_warehouse_navigation` Mock WMS 的 `/tasks` 接口（只读）
-- 将上游任务映射为 Dashboard 统一 `Task` 契约，前端无需感知上游字段差异
-- 新增 `GET /api/wms/tasks` 与 `POST /api/wms/tasks`，作为 AMR Mock WMS `/tasks` 的最小 HTTP proxy
-- 前端新增 Mock WMS 任务创建表单和 WMS 任务列表
-- 新增 Dashboard Backend 到 Frontend 的 `/ws/status` WebSocket 状态流，用于推送任务列表和机器人状态快照
-- 后端启动时连接本地 MQTT broker，默认 `mqtt://127.0.0.1:1883`
-- 订阅 `robot/state`、`robot/imu`、`robot/motor/status`、`robot/alarm`，并在内存中缓存最新消息
-- 新增 `GET /api/robot/status` 返回最新 MQTT 机器人状态快照
-- 新增 `POST /api/robot/motor/cmd`，由 backend 发布 MQTT `robot/motor/cmd`
-- 可通过环境变量切换数据源：`ROBOT_OPS_TASK_SOURCE=mock_json|amr_http`
+当前建议直接按以下口径理解本仓库：
 
-当前版本保留 V0.1 的基础能力，并允许通过 AMR HTTP API 创建 Mock WMS task；同时新增一条受限的低频电机命令链路，用于 bench / dashboard 联调。
+- Dashboard 是观察与监控层，不是机器人控制器
+- 前端保持纯 HTML / CSS / JavaScript
+- Backend 通过 HTTP adapter 读取 AMR API，不直接依赖 ROS 2、Nav2 或 Gazebo
+- 集成配置通过环境变量管理，例如 `ROBOT_OPS_TASK_SOURCE`、`AMR_API_BASE_URL`、`MQTT_BROKER_URL`
+- 网络失败、上游不可用或 broker 断开时，前端需要明确显示 `disconnected` 或错误状态
+- 所有会影响上游或下游行为的能力都必须通过显式 HTTP 接口触发，不能有隐藏副作用
 
-当前 **不引入前端框架，不实现 Nav2 控制、多机器人调度、复杂 WMS 逻辑、数据库持久化或把 frontend 直接接到 ROS 2 / MQTT**。电机控制仅通过 backend 的 `POST /api/robot/motor/cmd` 发布低频 MQTT 命令，WebSocket 仍只用于 Dashboard Backend 向 Frontend 推送状态快照。
+当前代码已实现的主要能力：
 
-当前后端状态：
+- `GET /health`
+- `GET /api/tasks`
+- `GET /api/device-status`
+- `GET /api/alerts`
+- `GET /api/robot/status`
+- `GET /api/wms/tasks`
+- `POST /api/wms/tasks`
+- `POST /api/robot/motor/cmd`
+- `WebSocket /ws/status`
+- `ROBOT_OPS_TASK_SOURCE=mock_json|amr_http`
 
-- 已提供 FastAPI Backend
-- `/api/tasks` 可切换 `mock_json` 或 `amr_http`
-- `/api/wms/tasks` 代理 AMR Mock WMS 的任务查询与创建
-- `/api/device-status` 与 `/api/alerts` 当前仍可继续返回 mock 数据
-- `/api/robot/status` 返回 MQTT 最新缓存状态；broker 不可用时返回 `disconnected` 连接状态
-- `/api/robot/motor/cmd` 接收前端控制请求，并发布受限 MQTT 命令到 `robot/motor/cmd`
-- `/ws/status` 推送统一 `dashboard_status` 消息，当前包含 `tasks`、`robot`，并在收到 MQTT 数据后带上最新 `motor` 与 `imu`
+其中：
 
-当前前端状态：
+- `/api/tasks` 用于读取 Dashboard 统一任务视图，可切换 `mock_json` 或 `amr_http`
+- `/api/robot/status` 只返回 backend 内存中的 MQTT 最新缓存；broker 不可用时返回 `disconnected` 状态
+- `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy，支持任务查询与创建
+- `/api/robot/motor/cmd` 会把前端命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制
+- `/ws/status` 向前端推送任务、设备、IMU 和电机状态快照
+- 前端实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream`
 
-- 已提供纯 HTML / CSS / JavaScript 页面
-- 使用原生 HTML / CSS / JavaScript
-- 默认请求 Dashboard backend 的 `/api/tasks`、`/api/device-status`、`/api/alerts`
-- 同步请求 `/api/robot/status`，用于展示 MQTT `robot/imu` 最新缓存状态
-- 通过表单调用 Dashboard backend 的 `POST /api/robot/motor/cmd` 下发电机控制命令
-- 通过表单调用 Dashboard backend 的 `POST /api/wms/tasks` 创建 Mock WMS task
-- 可手动刷新 `GET /api/wms/tasks` 任务列表
-- 页面加载后连接 Dashboard backend 的 `/ws/status`
-- 保留每 3 秒 HTTP 自动刷新作为 WebSocket 断开时的 fallback
-- MQTT 新消息会通过现有 `/ws/status` 状态流推送到前端
-- 实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream` 五张卡片，刷新时只更新字段和状态样式，避免录屏时布局跳动
-- MPU6050 / IMU 状态区域展示 source、ros_topic、mqtt_topic、online/stale/offline、last update、Roll/Pitch/Yaw、accel x/y/z、gyro x/y/z、temperature 与 state；无数据时保留占位内容
-- Motor / Encoder 状态区域展示 `target_rpm`、`measured_rpm`、`pwm`、`error_rpm`、`enabled`、`closed_loop`、`fault`、`max_pwm`、`timeout_ms`、`source`、`loop`，并保留现有 `motor_state` 容错显示
-- Motor / Encoder 卡片新增 `enable`、`target_rpm`、`max_pwm`、`timeout_ms`、`Apply`、`Stop` 控制入口，命令仍由 backend 做二次限幅和安全约束
+## 当前交互边界
 
-当前联调脚本状态：
+当前代码确实已经提供显式交互能力，但边界仍然受限：
 
-- 已提供 `scripts/verify_amr_http_integration.sh`
-- 用于验证 `AMR Mock WMS API -> Dashboard Backend -> /api/tasks` 的 HTTP 数据映射，并创建一条 Mock WMS 测试任务确认任务可见性
-- 不启动前端、不启动 uvicorn、不依赖 ROS 2 / Nav2 / Gazebo
+- 支持通过 `POST /api/wms/tasks` 创建上游 Mock WMS task
+- 支持通过 `POST /api/robot/motor/cmd` 发布低频电机命令
+- 不提供 Nav2 控制能力
+- 不提供底盘级或多机器人调度能力
+- 不把 frontend 直接接到 ROS 2 或 MQTT
+- 不把 Dashboard 扩展为高频闭环控制器
+
+更完整的当前口径见 [docs/current_scope.md](/home/ina/workspace/robot-ops-dashboard/docs/current_scope.md)。
 
 ## 第一阶段优先级
 
-V0.1 到后续 V0.2 的首要工作，是优先对接 `amr_warehouse_navigation` 的 **Mock WMS HTTP API**，先把 AMR 任务流、任务状态和基础告警链路跑通。
+当前首要目标仍然是把 AMR 任务流、任务状态、设备状态和基础告警链路稳定为可观察、可演示、可验证的监控链路。
 
-在此基础上，当前已落地最小 MQTT 状态接入和受限电机命令链路，后续仍预留两条扩展方向：
+后续扩展方向仍保留为：
 
 - 扩展 `ros2-robot-digital-twin` 项目的 MQTT / micro-ROS 下位机状态数据映射
 - 引入机器学习异常分类、LLM 诊断建议、YOLO 视觉检测结果展示
 
 ## Frontend Live Demo
+
+本节记录当前代码已实现的本地演示路径，包含状态监控、Mock WMS task 创建和受限电机控制。
 
 V0.2 前端演示页支持状态监控与最小 Mock WMS 任务创建，推荐按下面顺序启动：
 
@@ -213,6 +387,8 @@ curl --noproxy '*' \
 
 ## MQTT Robot Status And Motor Cmd
 
+本节同时覆盖 MQTT 状态监控链路与当前已实现的 motor command 发布链路。
+
 Dashboard backend 会在启动时尝试连接本地 MQTT broker：
 
 - 默认 broker：`mqtt://127.0.0.1:1883`
@@ -288,9 +464,9 @@ STM32 + MPU6050
 - micro-ROS 是下位机数据进入 ROS 2 的主链路。
 - MQTT 只是 PC 端把 ROS 2 IMU topic 低频镜像到 Dashboard 的展示链路。
 - ESP32 当前不直接发布 MQTT，也不需要配置 MQTT broker。
-- Dashboard 只消费状态，不参与电机控制，不下发 `/cmd_vel` 或 `/motor/target_rpm`。
+- Dashboard backend 当前可以显式发布 `robot/motor/cmd`，但不下发 `/cmd_vel`，也不承担 Nav2 或底盘控制。
 
-可以使用仓库脚本启动只读联调链路：
+可以使用仓库脚本启动传感器状态联调链路：
 
 ```bash
 ./scripts/start_microros_sensor_stack.sh
@@ -330,7 +506,7 @@ STM32 + MPU6050
 - `microros_imu_to_mqtt_bridge.py` 只订阅 ROS 2 IMU topic，只发布 MQTT `robot/imu`，不读取串口，不依赖 ESP32 直接 MQTT。
 - bridge 默认做低频镜像，避免把高频 IMU 全量压到 Dashboard。
 - Dashboard backend 仍只消费 MQTT `robot/imu`，不直接依赖 ROS 2 或 micro-ROS。
-- motor 控制仍保持 ROS 2 topic -> ESP32 micro-ROS -> 本地控制的设计，不通过 Dashboard 或 MQTT 下发。
+- motor 控制当前支持 `frontend -> backend -> MQTT robot/motor/cmd` 的显式命令链路；ROS 2 / ESP32 侧如何消费该 topic 仍由外部桥接或下位机实现负责。
 - 只有使用 `--transport serial` 时才需要串口权限；默认 UDP 模式不读取 `/dev/ttyACM0`。
 - 日志默认保存在 `/tmp/robot_ops_microros_sensor_stack/`。
 
@@ -469,11 +645,13 @@ DASHBOARD_API_BASE_URL=http://127.0.0.1:9000 \
 
 本仓库负责的是“观察、聚合、解释、展示”，并提供最小 Mock WMS 任务创建 proxy，不直接承担底层控制职责。
 
+当前代码还提供一条受限的电机控制入口：`POST /api/robot/motor/cmd`。该能力通过 backend 发布低频 MQTT 命令，适合本地 bench / dashboard 联调，但不等同于完整机器人控制平面。
+
 明确不做的事情：
 
 - 不直接控制 Nav2
-- 不直接控制电机、底盘或执行器
-- 不通过 MQTT 下发任务或控制指令
+- 不提供底盘级或执行器级高频闭环控制
+- 不通过 MQTT 下发导航任务
 - 不做多机器人调度
 - 不承担完整 WMS 职责
 - 不承担完整 AI 平台职责

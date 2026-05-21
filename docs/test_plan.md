@@ -23,7 +23,7 @@
 - 是否明确写出当前不写前端代码、不引入框架
 - 是否明确写出当前优先接入 `amr_warehouse_navigation` Mock WMS HTTP API
 - 是否明确写出后续预留 MQTT / micro-ROS / ML / LLM / YOLO 能力接入
-- 是否明确写出不直接控制 Nav2、不直接控制电机
+- 是否明确写出不直接控制 Nav2、但当前已实现受限 motor command
 - 是否明确写出不承担完整 WMS 或完整 AI 平台职责
 
 ### 3.2 Mock 数据结构检查
@@ -55,6 +55,7 @@
 - 任务状态归一化测试
 - `GET /api/wms/tasks` proxy 转发测试
 - `POST /api/wms/tasks` payload 映射与 AMR 响应透传测试
+- `POST /api/robot/motor/cmd` payload 限幅与 publish 调用测试
 - 数据刷新与更新时间测试
 - 异常请求与重试策略测试
 
@@ -78,6 +79,8 @@ env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest backend/tests -q
 - 前端布局稳定性检查：打开前端观察 30 秒，确认 `/ws/status` 刷新时 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream` 卡片顺序、位置和高度不跳动
 - IMU 实时刷新检查：当 `last_message_at` 持续刷新时，仅数字、状态灯、水平条和姿态方块变化，Roll/Pitch/Yaw 保持固定三行占位
 - `robot/motor/status` mock publisher 可向本地 broker 发布对齐 `robot_status_api_bridge` 的测试数据，前端能解析 `motor_state` JSON 字符串
+- 前端 Motor / Encoder 表单能调用 `POST /api/robot/motor/cmd`
+- `stop=true` 时 backend 返回的 published payload 会强制 `target_rpm=0`
 - 消息断流后的离线判定
 - micro-ROS 桥接字段映射
 - `scripts/start_microros_sensor_stack.sh` 可启动 micro-ROS agent 与 ROS 2 -> MQTT bridge，并保持 Dashboard backend 只通过 MQTT 读取状态
@@ -90,7 +93,7 @@ env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest backend/tests -q
   5. 确认 `mosquitto_sub -h 127.0.0.1 -t robot/imu -v` 能收到 PC bridge 镜像后的 IMU 数据
   6. 确认 `curl --noproxy '*' http://127.0.0.1:9000/api/robot/status` 能看到 `robot.imu` 和 `topics["robot/imu"].received_at`
   7. 确认前端通过 `/ws/status` 刷新 IMU freshness
-  8. 确认没有新增 MQTT 控制链路：不通过 MQTT 下发 `/cmd_vel`、`/motor/target_rpm`，Dashboard 不直接控制电机
+  8. 确认 Dashboard 仍不下发 `/cmd_vel`；如启用 motor command，仅通过 `POST /api/robot/motor/cmd` -> MQTT `robot/motor/cmd` 这条显式链路发布低频命令
 - 同一机器人多子系统状态聚合
 - 设备告警生成正确性
 
@@ -112,8 +115,9 @@ AI 扩展引入后，建议重点关注：
 2. 项目边界清晰
 3. 第一阶段优先链路明确且指向 AMR Mock WMS HTTP API
 4. 最小 Mock WMS task proxy 具备前端表单、curl 与 backend 单元测试验证方式
-5. 最小 MQTT 只读状态接入具备 API 与 mock publisher 验证方式
-6. Mock 数据可被直接用于演示或后续联调
+5. MQTT 状态接入具备 API 与 mock publisher 验证方式
+6. `POST /api/robot/motor/cmd` 具备 payload 限幅、stop 优先级和 publish 错误处理测试
+7. Mock 数据可被直接用于演示或后续联调
 
 ## 8. 当前阶段不测试的内容
 

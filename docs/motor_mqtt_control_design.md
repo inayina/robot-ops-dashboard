@@ -1,5 +1,15 @@
 # 电机 MQTT 控制最小闭环设计
 
+## 文档状态
+
+本文件描述的链路已在当前代码中落地：
+
+- backend 已实现 `POST /api/robot/motor/cmd`
+- backend 会向 MQTT `robot/motor/cmd` 发布规范化后的命令 payload
+- frontend Motor / Encoder 卡片已提供 `enable`、`target_rpm`、`max_pwm`、`timeout_ms`、`Apply`、`Stop`
+
+当前能力仍然是低频、受限、显式的控制链路，适合本地 bench / demo 联调，不应表述为完整电机控制平面或机器人控制器。
+
 ## 目标
 
 在保持 Dashboard backend 不直接依赖 ROS 2 的前提下，补齐一条最小电机控制闭环：

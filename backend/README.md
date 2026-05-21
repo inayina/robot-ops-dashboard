@@ -4,14 +4,19 @@
 
 `backend/` 提供 `robot-ops-dashboard` 的最小 Python FastAPI 后端骨架。
 
-当前版本只负责：
+当前 backend 仍以监控聚合为主线，但当前代码已经实现两类显式交互能力：
+
+- `POST /api/wms/tasks`：创建上游 Mock WMS task
+- `POST /api/robot/motor/cmd`：发布低频 MQTT 电机命令
+
+建议优先把 backend 理解为：
 
 - 读取 `mock/` 目录下的 JSON 文件
 - 通过 HTTP API 返回任务、设备状态和告警数据
-- 作为 AMR Mock WMS `/tasks` 的最小 HTTP proxy，支持查询和创建 Mock WMS task
-- 通过只读 WebSocket 向前端推送 Dashboard 状态快照
+- 通过 HTTP adapter 读取上游 AMR API 并映射为 Dashboard 统一任务模型
 - 通过 MQTT 订阅机器人状态 topic，并在内存中缓存最新消息
-- 为后续本地静态前端或前端框架接入提供统一入口
+- 通过 MQTT 发布受限的 motor command
+- 为纯静态前端提供统一入口
 
 当前版本明确不做：
 
@@ -19,10 +24,15 @@
 - 不接数据库
 - 不接 ML / LLM / YOLO
 - 不直接控制 Nav2
-- 不直接控制电机
-- 不通过 MQTT 发布控制指令
+- 不提供底盘级或真实机器人高频闭环控制
 - 不做多机器人调度或复杂 WMS 逻辑
 - 不改动其他仓库
+
+补充说明：
+
+- `POST /api/wms/tasks`、`POST /api/robot/motor/cmd`、`/ws/status` 都是当前代码已实现的能力。
+- 其中 motor command 适合本地 demo / bench 联调，但不应被表述为完整控制平面。
+- 如果文档之间存在冲突，以根目录 `AGENTS.md` 与 [docs/current_scope.md](/home/ina/workspace/robot-ops-dashboard/docs/current_scope.md) 为准。
 
 ## 目录结构
 
@@ -39,10 +49,12 @@ backend/
 │   └── services/
 │       ├── __init__.py
 │       ├── amr_http_service.py
+│       ├── mqtt_motor_command.py
 │       ├── mqtt_robot_status.py
 │       ├── mock_data_service.py
 │       └── task_mapper.py
 └── tests/
+    ├── test_motor_command_api.py
     ├── test_mqtt_robot_status.py
     ├── test_task_mapper.py
     └── test_tasks_api.py
@@ -79,8 +91,9 @@ uvicorn app.main:app --host 127.0.0.1 --port 9000 --reload
 ```bash
 curl --noproxy '*' http://127.0.0.1:9000/health
 curl --noproxy '*' http://127.0.0.1:9000/api/tasks
+curl --noproxy '*' http://127.0.0.1:9000/api/device-status
+curl --noproxy '*' http://127.0.0.1:9000/api/alerts
 curl --noproxy '*' http://127.0.0.1:9000/api/robot/status
-curl --noproxy '*' http://127.0.0.1:9000/api/wms/tasks
 ```
 
 启动后默认访问地址：
@@ -180,11 +193,14 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 
 说明：
 
-- 该链路只订阅和展示状态，不向 MQTT broker 发布控制命令，不写数据库。
+- 默认状态链路会订阅和展示 MQTT 数据，不写数据库。
 - `robot/motor/status` 当前对齐 `/home/ina/Documents/PlatformIO/Projects/robot-state-monitor-v1/ros2/robot_status_api_bridge`，包含 `status`、`actual_rpm`、`motor_state`、`freshness`、`last_update_time`。
 - `motor_state` 当前是 ROS 2 `/motor/state` 的原始 JSON 字符串，前端只做容错解析与展示；它不是远程启动电机、设置 PWM 或下发运动目标的接口。
+- `POST /api/robot/motor/cmd` 会额外向 MQTT `robot/motor/cmd` 发布规范化后的低频命令，用于本地联调与 bench 控制。
 
 ## 接口列表
+
+当前已实现接口：
 
 - `GET /health`
 - `GET /api/tasks`
@@ -193,6 +209,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `GET /api/robot/status`
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
+- `POST /api/robot/motor/cmd`
 - `WebSocket /ws/status`
 
 ## 接口说明
@@ -232,6 +249,34 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `robot.imu`：来自 `robot/imu`
 - `robot.motor_status`：来自 `robot/motor/status`，当前用于展示 `robot_status_api_bridge` 输出的电机状态镜像
 - `robot.alarm`：来自 `robot/alarm`
+
+### `POST /api/robot/motor/cmd`
+
+该接口用于发布低频受限的电机控制命令：
+
+- 接收前端电机命令表单参数
+- 由 backend 做限幅和安全字段补全
+- 发布到 MQTT `robot/motor/cmd`
+- 返回最终发布的规范化 payload
+
+当前请求体字段：
+
+- `target_rpm`
+- `enabled`
+- `closed_loop`
+- `max_pwm`
+- `timeout_ms`
+- `stop`
+
+当前规范化规则：
+
+- `target_rpm` 会被限制到 `[-MOTOR_CMD_MAX_ABS_RPM, MOTOR_CMD_MAX_ABS_RPM]`
+- `max_pwm` 会被限制到 `[0, MOTOR_CMD_MAX_PWM_LIMIT]`
+- `timeout_ms` 会被限制到 `[MOTOR_CMD_MIN_TIMEOUT_MS, MOTOR_CMD_MAX_TIMEOUT_MS]`
+- `stop=true` 时会强制把 `target_rpm` 置为 `0`
+- backend 自动补充 `robot_id`、`source=dashboard_backend`、`command_id`、`issued_at`
+
+该接口适合本地 bench / dashboard 联调，但不表示 backend 已承担高频闭环控制职责。
 
 ### `GET /api/wms/tasks`
 
@@ -300,7 +345,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 }
 ```
 
-注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend。MQTT 只作为只读状态输入，不连接 ROS 2、ESP32 或真实硬件控制面。`motor` 当前用于 Motor / Encoder 状态卡片展示 `robot_status_api_bridge` 输出，不表示 Dashboard 可以远程启动电机或下发目标。
+注意：该 WebSocket 仅存在于 Dashboard Backend -> Frontend，用于推送状态快照。`motor` 当前用于 Motor / Encoder 状态卡片展示 `robot_status_api_bridge` 输出；电机命令发布走独立的 `POST /api/robot/motor/cmd`，而不是通过 WebSocket 下发。
 
 ## 错误处理
 
