@@ -92,6 +92,31 @@ def test_amr_http_mode_failure_returns_http_exception(monkeypatch):
     assert "upstream unavailable" in body["detail"]["detail"]
 
 
+def test_status_websocket_message_keeps_mqtt_telemetry_when_amr_http_fails(monkeypatch):
+    config.ROBOT_OPS_TASK_SOURCE = "amr_http"
+    main.mqtt_status_service.clear()
+    main.mqtt_status_service.record_message(
+        "robot/imu",
+        b'{"robot_id":"amr-001","status":"online","yaw_deg":12.5}',
+    )
+
+    class BrokenAmrService:
+        def fetch_amr_tasks(self):
+            raise AmrNetworkError("upstream unavailable")
+
+    monkeypatch.setattr(main, "get_amr_service", lambda: BrokenAmrService())
+
+    payload = main.build_dashboard_status_message().model_dump()
+
+    assert payload["tasks"] == []
+    assert payload["imu"]["yaw_deg"] == 12.5
+    assert payload["robot"]["mqtt"]["robot"]["imu"]["yaw_deg"] == 12.5
+    assert "upstream unavailable" in payload["robot"]["error"]
+
+    config.ROBOT_OPS_TASK_SOURCE = "mock_json"
+    main.mqtt_status_service.clear()
+
+
 def test_status_websocket_route_and_message_contract():
     config.ROBOT_OPS_TASK_SOURCE = "mock_json"
     main.mqtt_status_service.clear()

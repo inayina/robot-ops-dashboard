@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import random
 import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
+
+BENCH_TARGET_RPM_PROFILE = [0.0, 40.0, 60.0, 80.0, 50.0, 0.0]
+BENCH_MAX_TARGET_RPM = 80.0
+BENCH_MAX_PWM = 0.25
 
 
 def utc_now_iso() -> str:
@@ -28,20 +31,20 @@ def parse_broker_url(broker_url: str) -> tuple[str, int]:
 
 
 def build_motor_status(robot_id: str, seq: int) -> dict[str, object]:
-    phase = seq / 6
-    target_rpm = round(120 + math.sin(phase / 2) * 80, 3)
-    actual_rpm = round(target_rpm + math.sin(phase) * 12 + random.uniform(-2, 2), 3)
+    target_rpm = BENCH_TARGET_RPM_PROFILE[(seq - 1) % len(BENCH_TARGET_RPM_PROFILE)]
+    actual_rpm = 0.0 if target_rpm == 0 else target_rpm * 0.825 + random.uniform(-1.5, 1.5)
+    actual_rpm = round(max(0.0, actual_rpm), 3)
     error_rpm = round(target_rpm - actual_rpm, 3)
-    pwm_duty = round(min(1.0, max(0.0, abs(target_rpm) / 300.0)), 3)
+    pwm_duty = round(min(BENCH_MAX_PWM, max(0.0, abs(target_rpm) / BENCH_MAX_TARGET_RPM * BENCH_MAX_PWM)), 3)
     timestamp = utc_now_iso()
     motor_state = {
         "target_rpm": target_rpm,
         "actual_rpm": actual_rpm,
         "error_rpm": error_rpm,
         "pwm_duty": pwm_duty,
-        "direction": 1 if target_rpm > 0 else -1 if target_rpm < 0 else 0,
-        "control_enabled": True,
-        "saturated": False,
+        "direction": 1 if target_rpm > 0 else 0,
+        "control_enabled": target_rpm > 0,
+        "saturated": target_rpm >= BENCH_MAX_TARGET_RPM,
         "timeout": False,
         "estop": False,
         "fault": False,
@@ -52,8 +55,11 @@ def build_motor_status(robot_id: str, seq: int) -> dict[str, object]:
     return {
         "schema_version": 1,
         "robot_id": robot_id,
-        "status": "ok",
+        "status": "stopped" if target_rpm == 0 else "ok",
+        "target_rpm": target_rpm,
         "actual_rpm": actual_rpm,
+        "measured_rpm": actual_rpm,
+        "pwm": pwm_duty,
         "motor_state": json.dumps(motor_state, separators=(",", ":")),
         "freshness": {
             "actual_rpm": {

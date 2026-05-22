@@ -54,7 +54,9 @@ Dashboard backend 发布 MQTT topic：`robot/motor/cmd`
   "source": "dashboard_backend",
   "command_id": "motor-cmd-20260520T120000Z",
   "issued_at": "2026-05-20T12:00:00Z",
-  "target_rpm": 120.0,
+  "target_speed_mps": 0.25,
+  "target_rpm": 73.46,
+  "direction": "forward",
   "enabled": true,
   "closed_loop": true,
   "max_pwm": 0.25,
@@ -67,6 +69,9 @@ Dashboard backend 发布 MQTT topic：`robot/motor/cmd`
 
 - `stop` 优先级最高；一旦为 `true`，下游必须停车。
 - `enabled=false` 时，不允许持续输出驱动。
+- 当前入口用于 single N20 motor bench 的 Wheel Speed / 轮端等效速度，不表示整车线速度。
+- 前端 Wheel Speed slider 限制为 `0.00 ~ 0.25 m/s`，拖动只更新 UI，点击 `Apply` 后才下发。
+- backend 默认把 `target_rpm` 限制到 `0 ~ 80 rpm`，把 `target_speed_mps` 限制到 `0.00 ~ 0.25 m/s`。
 - `max_pwm` 必须在 backend 先做一次约束，再由下游再次约束。
 - `timeout_ms` 必须在 backend 先做一次约束，再由下游再次约束。
 - Dashboard 只提供低频人机控制，不承担实时闭环。
@@ -75,9 +80,8 @@ Dashboard backend 发布 MQTT topic：`robot/motor/cmd`
 
 Motor 卡片新增：
 
-- `enable` 开关
-- `target_rpm` 输入
-- `max_pwm` 输入
+- Wheel Speed / 轮端等效速度 slider
+- `target_speed` 与换算后的 `equiv_target_rpm` 只读显示
 - `timeout_ms` 输入
 - `Apply` / `Stop` 按钮
 

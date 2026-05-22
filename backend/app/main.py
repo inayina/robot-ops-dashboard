@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import math
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -222,13 +223,37 @@ def clamp_int(value: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(max_value, value))
 
 
+def speed_mps_to_rpm(speed_mps: float) -> float:
+    wheel_circumference_m = math.pi * config.MOTOR_CMD_WHEEL_DIAMETER_M
+    if wheel_circumference_m <= 0:
+        return 0.0
+    return speed_mps * 60.0 / wheel_circumference_m
+
+
+def rpm_to_speed_mps(rpm: float) -> float:
+    wheel_circumference_m = math.pi * config.MOTOR_CMD_WHEEL_DIAMETER_M
+    return rpm * wheel_circumference_m / 60.0
+
+
 def build_motor_command_payload(request: MotorCommandRequest) -> dict[str, Any]:
     stop = bool(request.stop)
-    target_rpm = clamp_float(
-        float(request.target_rpm),
-        -config.MOTOR_CMD_MAX_ABS_RPM,
-        config.MOTOR_CMD_MAX_ABS_RPM,
-    )
+    target_speed_mps = None
+    if request.target_speed_mps is not None:
+        target_speed_mps = clamp_float(
+            float(request.target_speed_mps),
+            0.0,
+            config.MOTOR_CMD_MAX_TARGET_SPEED_MPS,
+        )
+        target_rpm = speed_mps_to_rpm(target_speed_mps)
+    else:
+        target_rpm = float(request.target_rpm)
+
+    target_rpm = clamp_float(target_rpm, 0.0, config.MOTOR_CMD_MAX_ABS_RPM)
+    if request.direction == "reverse":
+        target_rpm = -target_rpm
+    elif request.direction == "stop":
+        target_rpm = 0.0
+
     max_pwm = clamp_float(
         float(request.max_pwm),
         0.0,
@@ -239,6 +264,9 @@ def build_motor_command_payload(request: MotorCommandRequest) -> dict[str, Any]:
         config.MOTOR_CMD_MIN_TIMEOUT_MS,
         config.MOTOR_CMD_MAX_TIMEOUT_MS,
     )
+    published_target_speed_mps = (
+        target_speed_mps if target_speed_mps is not None else rpm_to_speed_mps(abs(target_rpm))
+    )
 
     return {
         "robot_id": config.ROBOT_ID,
@@ -246,6 +274,8 @@ def build_motor_command_payload(request: MotorCommandRequest) -> dict[str, Any]:
         "command_id": f"motor_cmd_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
         "issued_at": utc_now_iso(),
         "target_rpm": 0.0 if stop else target_rpm,
+        "target_speed_mps": 0.0 if stop else published_target_speed_mps,
+        "direction": "stop" if stop else request.direction,
         "enabled": bool(request.enabled),
         "closed_loop": bool(request.closed_loop),
         "max_pwm": max_pwm,
@@ -341,8 +371,22 @@ def build_robot_status_response() -> RobotStatusResponse:
     return RobotStatusResponse(**mqtt_status_service.build_status())
 
 
+def extract_status_error_detail(exc: Exception) -> str:
+    detail = getattr(exc, "detail", str(exc))
+    if isinstance(detail, dict):
+        detail = detail.get("detail") or detail.get("error_type") or str(detail)
+    return str(detail)
+
+
 def build_dashboard_status_message() -> DashboardStatusMessage:
-    tasks_envelope = load_tasks_envelope()
+    task_error = None
+    try:
+        tasks_envelope = load_tasks_envelope()
+        tasks = tasks_envelope.data
+    except Exception as exc:
+        task_error = extract_status_error_detail(exc)
+        tasks = []
+
     devices_envelope = load_mock_envelope(DEVICE_STATUS_FILE)
     mqtt_status = build_robot_status_response()
     mqtt_devices = mqtt_status.robot.get("devices", [])
@@ -353,10 +397,12 @@ def build_dashboard_status_message() -> DashboardStatusMessage:
     )
     robot = summarize_robot_status(merged_devices_envelope)
     robot["mqtt"] = mqtt_status.model_dump()
+    if task_error:
+        robot["error"] = f"tasks: {task_error}"
 
     return DashboardStatusMessage(
         timestamp=utc_now_iso(),
-        tasks=tasks_envelope.data,
+        tasks=tasks,
         robot=robot,
         motor=mqtt_status.robot.get("motor_status"),
         imu=mqtt_status.robot.get("imu"),
@@ -364,9 +410,7 @@ def build_dashboard_status_message() -> DashboardStatusMessage:
 
 
 def build_dashboard_status_error_message(exc: Exception) -> DashboardStatusMessage:
-    detail = getattr(exc, "detail", str(exc))
-    if isinstance(detail, dict):
-        detail = detail.get("detail") or detail.get("error_type") or str(detail)
+    detail = extract_status_error_detail(exc)
 
     return DashboardStatusMessage(
         timestamp=utc_now_iso(),

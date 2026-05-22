@@ -24,7 +24,7 @@
 - 提供 `POST /api/robot/motor/cmd`，由 backend 发布低频 MQTT `robot/motor/cmd`
 - 提供 `scripts/mock_mqtt_motor_status_publisher.py` 模拟发布 `robot/motor/status`
 - 提供 `scripts/start_microros_sensor_stack.sh` 一键启动 micro-ROS agent、ROS 2 -> MQTT bridge、Dashboard backend 与前端页面
-- 提供 `scripts/microros_imu_to_mqtt_bridge.py` 将 ROS 2 IMU topic 只读桥接到 MQTT `robot/imu`
+- 提供 `scripts/microros_imu_to_mqtt_bridge.py` 将 ROS 2 IMU topic 只读桥接到 MQTT `robot/imu`，并支持将 `/robot/state` 的 `std_msgs/msg/Int32` 镜像到 MQTT `robot/state`
 
 该实现仍不控制 Nav2，也不承担底盘级高频闭环控制，不做数据库持久化。ESP32 当前不直接发布 MQTT；Dashboard backend 会通过 MQTT 下发显式的 `robot/motor/cmd`，但不下发 `/cmd_vel`。
 
@@ -40,7 +40,7 @@ STM32 + MPU6050
   -> PC micro-ROS Agent
   -> ROS 2 topics: /imu/data, /imu/filtered, /robot/state
   -> PC microros_imu_to_mqtt_bridge.py
-  -> MQTT robot/imu
+  -> MQTT robot/imu, robot/state
   -> Dashboard backend
   -> /api/robot/status and /ws/status
   -> Frontend
@@ -50,7 +50,7 @@ STM32 + MPU6050
 
 - ESP32-S3 只承担 UART 数据接入和 micro-ROS 节点职责，不直接连接 MQTT。
 - `micro_ros_agent` 在 PC 上接收 ESP32-S3 的 Wi-Fi UDP micro-ROS 数据，并在 ROS 2 graph 中暴露 `/imu/data`、`/imu/filtered`、`/robot/state` 等 topic。
-- `microros_imu_to_mqtt_bridge.py` 只订阅 ROS 2 IMU topic，并将低频状态镜像到 MQTT `robot/imu` 供 Dashboard 展示。
+- `microros_imu_to_mqtt_bridge.py` 可镜像两类只读 topic：IMU topic -> `robot/imu`，`/robot/state` -> `robot/state`。
 - Dashboard backend 只订阅 MQTT 状态缓存，对前端提供 `/api/robot/status` 与 `/ws/status`。
 
 可用以下命令启动本地传感器看板链路：
@@ -64,8 +64,9 @@ STM32 + MPU6050
 1. 启动 `micro_ros_agent udp4 --port 8888`
 2. 等待 ROS 2 `/imu/data` 或 `/imu/filtered` 出现
 3. 启动 `microros_imu_to_mqtt_bridge.py`，低频镜像 IMU payload 到 MQTT `robot/imu`
-4. 启动或复用 Dashboard backend，从 MQTT 读取最新缓存
-5. 启动或复用前端页面，通过 `/api/robot/status` 与 `/ws/status` 展示 IMU freshness
+4. 启动 `microros_imu_to_mqtt_bridge.py` 的 state 模式，将 `/robot/state` 镜像到 MQTT `robot/state`
+5. 启动或复用 Dashboard backend，从 MQTT 读取最新缓存
+6. 启动或复用前端页面，通过 `/api/robot/status` 与 `/ws/status` 展示 IMU freshness 与 Sensor Status LEDs
 
 可用参数覆盖默认值：
 

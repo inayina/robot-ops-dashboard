@@ -208,6 +208,27 @@
                   <strong id="imuStatusLabel">Offline</strong>
                 </div>
               </div>
+              <div class="sensor-leds-panel" aria-label="Sensor Status LEDs">
+                <div class="sensor-leds-head">
+                  <strong>Sensor Status LEDs</strong>
+                  <span id="sensorLedLastUpdate" class="mono stable-date">Last update: --:--:--</span>
+                </div>
+                <div class="sensor-leds-row">
+                  <span id="sensorLedNormal" class="sensor-led-badge no-data">
+                    <span class="sensor-led-dot"></span>
+                    Normal
+                  </span>
+                  <span id="sensorLedWarning" class="sensor-led-badge no-data">
+                    <span class="sensor-led-dot"></span>
+                    Warning
+                  </span>
+                  <span id="sensorLedAlarm" class="sensor-led-badge no-data">
+                    <span class="sensor-led-dot"></span>
+                    Alarm / Critical
+                  </span>
+                  <span id="sensorLedCurrent" class="sensor-led-current">Current: No Data</span>
+                </div>
+              </div>
               <div class="imu-source-grid">
                 <div class="imu-info-tile">
                   <span>source</span>
@@ -307,7 +328,7 @@
           <div class="section-head">
             <div>
               <p class="section-kicker">Motor / Encoder</p>
-              <h2>电机状态</h2>
+              <h2>Wheel Speed / 轮端等效速度</h2>
             </div>
             <p id="motorMeta" class="section-meta">waiting for robot/motor/status</p>
           </div>
@@ -330,18 +351,22 @@
               </div>
             </div>
             <form id="motorCommandForm" class="motor-command-form">
-              <label class="motor-command-toggle">
-                <span>enable</span>
-                <input id="motorEnableSwitch" name="enabled" type="checkbox" checked />
+              <label class="motor-speed-control">
+                <span>Wheel Speed / 轮端等效速度</span>
+                <input id="motorTargetSpeedSlider" name="target_speed_mps" type="range" min="0" max="0.25" step="0.01" value="0" />
               </label>
-              <label>
-                <span>target_rpm</span>
-                <input id="motorTargetRpmInput" name="target_rpm" type="number" step="1" value="120" />
-              </label>
-              <label>
-                <span>max_pwm</span>
-                <input id="motorMaxPwmInput" name="max_pwm" type="number" step="0.01" min="0" max="1" value="0.25" />
-              </label>
+              <div class="motor-command-readout">
+                <span>target_speed</span>
+                <strong id="motorTargetSpeedInputValue" class="motor-number-value">0.00 m/s</strong>
+              </div>
+              <div class="motor-command-readout">
+                <span>equiv_target_rpm</span>
+                <strong id="motorTargetRpmInputValue" class="motor-number-value">0 rpm</strong>
+              </div>
+              <div class="motor-command-readout">
+                <span>direction</span>
+                <strong id="motorDirectionInputValue" class="text-fixed">forward</strong>
+              </div>
               <label>
                 <span>timeout_ms</span>
                 <input id="motorTimeoutInput" name="timeout_ms" type="number" step="50" min="100" value="800" />
@@ -355,33 +380,55 @@
             <div class="motor-bench-grid">
               <div class="motor-primary-row">
                 <div class="motor-bench-tile">
-                  <span>measured_rpm</span>
-                  <strong id="motorMeasuredRpm" class="motor-number-value">-----</strong>
+                  <span>Target Wheel Speed</span>
+                  <strong id="motorTargetWheelSpeed" class="motor-number-value">--.-- m/s</strong>
                 </div>
                 <div class="motor-bench-tile">
-                  <span>target_rpm</span>
-                  <strong id="motorTargetRpm" class="motor-number-value">-----</strong>
+                  <span>Actual Wheel Speed</span>
+                  <strong id="motorActualWheelSpeed" class="motor-number-value">--.-- m/s</strong>
                 </div>
               </div>
               <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>Target RPM</span>
+                  <strong id="motorTargetRpm" class="motor-number-value">----- rpm</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>Actual RPM</span>
+                  <strong id="motorMeasuredRpm" class="motor-number-value">----- rpm</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>PWM</span>
+                  <strong id="motorPwmValue" class="motor-number-value">-----</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>Direction</span>
+                  <strong id="motorDirectionValue" class="text-fixed">-</strong>
+                </div>
+              </div>
+              <div class="motor-ticks-grid">
+                <div class="motor-bench-tile">
+                  <span>Status</span>
+                  <strong id="motorWheelStatusValue" class="text-fixed">no data</strong>
+                </div>
+                <div class="motor-bench-tile">
+                  <span>Bench Limit</span>
+                  <strong id="motorBenchLimitValue" class="text-fixed">max 80 rpm</strong>
+                </div>
                 <div class="motor-bench-tile">
                   <span>error_rpm</span>
                   <strong id="motorErrorRpm" class="motor-number-value">-----</strong>
                 </div>
                 <div class="motor-bench-tile">
-                  <span>pwm</span>
-                  <strong id="motorPwmValue" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
                   <span>enabled</span>
                   <strong id="motorEnabledValue" class="text-fixed">-</strong>
                 </div>
+              </div>
+              <div class="motor-ticks-grid">
                 <div class="motor-bench-tile">
                   <span>closed_loop</span>
                   <strong id="motorClosedLoopValue" class="text-fixed">-</strong>
                 </div>
-              </div>
-              <div class="motor-ticks-grid">
                 <div class="motor-bench-tile">
                   <span>fault</span>
                   <strong id="motorFaultValue" class="text-fixed">-</strong>

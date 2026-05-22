@@ -185,7 +185,7 @@ flowchart TD
 - Dashboard backend 是上层观察层和受限控制入口，负责 HTTP adapter、状态缓存、WebSocket 推送和受限命令转发。
 - AMR 仓库当前只做固定任务点、Mock WMS、Nav2 执行和状态回写。
 - Digital twin 仓库当前负责 IMU、robot state、motor status / motor cmd 的 micro-ROS / MQTT 链路。
-- 当前 motor command 是 bench / demo 用的低频受限命令链路，不是完整底盘安全控制系统。
+- 当前 motor command 是 single N20 motor bench / demo 用的低频受限命令链路，不是完整底盘安全控制系统，也不是 ros2_control。
 - 当前不包含完整 WMS、多机器人调度、商业订单系统、权限系统、AI 诊断闭环。
 
 ## 当前阶段
@@ -248,6 +248,23 @@ flowchart TD
 ## Frontend Live Demo
 
 本节记录当前代码已实现的本地演示路径，包含状态监控、Mock WMS task 创建和受限电机控制。
+
+联调时最容易混淆的是端口角色。当前默认口径固定如下：
+
+| 服务 | 默认地址 / 端口 | 作用 |
+| --- | --- | --- |
+| AMR Mock WMS API | `http://127.0.0.1:8000` | 上游任务 HTTP API，仅在 `ROBOT_OPS_TASK_SOURCE=amr_http` 时使用 |
+| Frontend static server | `http://127.0.0.1:8001/frontend/` | 静态页面入口 |
+| MQTT broker | `mqtt://127.0.0.1:1883` | `robot/imu`、`robot/state`、`robot/motor/status`、`robot/motor/cmd` |
+| micro-ROS Agent UDP | `udp4://0.0.0.0:8888` | ESP32-S3 -> ROS 2 数据接入 |
+| Dashboard backend | `http://127.0.0.1:9000` | `/api/*` 与 `/ws/status` |
+
+记忆方式：
+
+- `8001` 只给浏览器打开前端，不是 API 端口。
+- `9000` 才是 frontend 默认请求的 backend API / WebSocket。
+- `1883` 是 broker，不直接给浏览器访问。
+- `8888` 是 micro-ROS UDP Agent，不是 HTTP 端口。
 
 V0.2 前端演示页支持状态监控与最小 Mock WMS 任务创建，推荐按下面顺序启动：
 
@@ -435,9 +452,19 @@ mosquitto_sub -h 127.0.0.1 -t 'robot/#' -v
 
 说明：
 
-- `robot/motor/status` 当前对齐 `/home/ina/Documents/PlatformIO/Projects/robot-state-monitor-v1/ros2/robot_mqtt_bridge`：payload 包含 `status`、`target_rpm`、`measured_rpm`、`pwm`、`enabled`、`closed_loop`、`fault`、`motor_state`、`last_update_time`。
+- `robot/motor/status` 当前对齐 `/home/ina/Documents/PlatformIO/Projects/robot-state-monitor-v1/ros2/robot_mqtt_bridge`：payload 包含 `status`、`target_rpm`、`measured_rpm`、`pwm`、`enabled`、`closed_loop`、`fault`、`motor_state`、`last_update_time`；更新后的 ESP32 bench 固件还会在 `motor_state` 中带出 `hardware_outputs_enabled`。
 - `motor_state` 当前仍保留为结构化容错字段，便于前端兼容显示。
-- `POST /api/robot/motor/cmd` 只发布低频受限命令，backend 会先约束 `target_rpm`、`max_pwm`、`timeout_ms`，并保留 `stop` 最高优先级。
+- STM32 本地三色传感器状态灯基于 MPU6050 RMS 状态判别输出 `State:<n>`，其中 `0/normal` 表示 Normal，`1/warning` 表示 Warning，`2/alarm` 表示 Alarm，`3/severe/critical` 表示 Critical。
+- Dashboard backend 只从 MQTT `robot/state` 的最新缓存读取该状态，并通过 `/api/robot/status` 的 `robot.state` 与 `topics["robot/state"]` 暴露给前端。
+- Dashboard 前端在 IMU Status card 内把 robot state 远程映射为 Sensor Status LEDs；该展示仅用于状态观察和现场调试，不控制 STM32/ESP32 或任何硬件 LED。
+- Motor / Encoder card 展示的是 **Wheel Speed / 轮端等效速度**，不是 Robot Speed / 整车速度。当前 bench 是 single N20 motor，页面只表示单轮端等效速度。
+- Wheel Speed 由 encoder rpm 换算：`wheel_diameter_m = 0.065`，`speed_mps = rpm * Math.PI * wheel_diameter_m / 60`。底层调试仍以 `target_rpm`、`actual_rpm` / `measured_rpm`、`pwm` 为主。
+- 如果外部 ESP32 bench 固件已更新到真实 encoder feedback 版本，`/motor/cmd` 常规路径下的 `actual_rpm` / `measured_rpm` 来自单 N20 bench 的编码器滤波值，不再是纯 mock 响应；当前 `20 rpm` 量级通常能接近目标，`40/60/80 rpm` 仍可能有较明显稳态误差。
+- 当前 max bench target 是 `80 rpm`，约 `0.27 m/s`；前端 Wheel Speed slider 保守限制为 `0.00 ~ 0.25 m/s`，步进 `0.01 m/s`，拖动只更新 UI，点击 `Apply` 后才下发命令。
+- `scripts/mock_mqtt_motor_status_publisher.py` 默认模拟安全录屏 bench profile：`0 -> 40 -> 60 -> 80 -> 50 -> 0 rpm`；80 rpm 目标下实际值约 66 rpm。
+- `POST /api/robot/motor/cmd` 只发布低频受限命令，backend 会先约束 `target_rpm`、`target_speed_mps`、`max_pwm`、`timeout_ms`，并保留 `stop` 最高优先级。`Stop` 会下发 `target_speed_mps=0`、`target_rpm=0`、`stop=true`。
+- 如果外部 ESP32 bench 固件已更新到运行时 arm/disarm 版本，`enabled=true` 且 `stop=false` 的 `/motor/cmd` 会在板端临时打开真实硬件输出，`stop=true` 或 `enabled=false` 会关闭；不再需要为了单次 bench 联调反复改编译期开关。
+- 当前不是完整双轮底盘闭环，不是完整底盘安全控制系统，也不是 ros2_control。
 - broker 未启动时，backend 仍可启动，`/api/robot/status` 会显示 MQTT 连接状态为 `disconnected` 或 `connecting`。
 - 前端已有 `/ws/status`，收到 MQTT 新消息后 backend 会通过该 WebSocket 推送新的 `dashboard_status` 快照。
 
@@ -463,10 +490,11 @@ STM32 + MPU6050
 
 - micro-ROS 是下位机数据进入 ROS 2 的主链路。
 - MQTT 只是 PC 端把 ROS 2 IMU topic 低频镜像到 Dashboard 的展示链路。
+- `/robot/state` 经 ROS 2 -> MQTT bridge 映射到 `robot/state` 后，Dashboard 才展示 Sensor Status LEDs；如果 bridge 尚未打通或状态超时，前端保持 `Current: No Data` 与灰色状态灯。
 - ESP32 当前不直接发布 MQTT，也不需要配置 MQTT broker。
 - Dashboard backend 当前可以显式发布 `robot/motor/cmd`，但不下发 `/cmd_vel`，也不承担 Nav2 或底盘控制。
 
-可以使用仓库脚本启动传感器状态联调链路：
+可以使用仓库脚本一键启动 IMU / robot state / motor status / motor cmd 的联调链路：
 
 ```bash
 ./scripts/start_microros_sensor_stack.sh
@@ -478,6 +506,9 @@ STM32 + MPU6050
 - micro-ROS Agent：`udp4 --port 8888`
 - ROS 2 topic wait：等待 `/imu/data` 或 `/imu/filtered`
 - ROS 2 -> MQTT bridge：订阅检测到的 IMU topic，低频发布到 `robot/imu`
+- ROS 2 -> MQTT state bridge：订阅 `/robot/state`，发布到 `robot/state`
+- ROS 2 -> MQTT motor status bridge：订阅 `/motor/status`，发布到 `robot/motor/status`
+- MQTT -> ROS 2 motor cmd bridge：订阅 `robot/motor/cmd`，发布到 `/motor/cmd`
 - Dashboard backend：`http://127.0.0.1:9000`
 - Frontend 页面：`http://127.0.0.1:8001/frontend/`
 
@@ -502,11 +533,16 @@ STM32 + MPU6050
 
 说明：
 
-- 该脚本按 `micro-ROS Agent -> 等待 IMU ROS 2 topic -> ROS 2 -> MQTT bridge` 的顺序启动。
-- `microros_imu_to_mqtt_bridge.py` 只订阅 ROS 2 IMU topic，只发布 MQTT `robot/imu`，不读取串口，不依赖 ESP32 直接 MQTT。
+- 该脚本按 `micro-ROS Agent -> 等待 IMU ROS 2 topic -> IMU/state bridge -> motor bridge -> Dashboard backend -> frontend` 的顺序启动。
+- `microros_imu_to_mqtt_bridge.py` 支持两类只读镜像：
+  `sensor_msgs/msg/Imu` -> `robot/imu`
+  `std_msgs/msg/Int32` -> `robot/state`
+- 该脚本不读取串口，不依赖 ESP32 直接 MQTT。
 - bridge 默认做低频镜像，避免把高频 IMU 全量压到 Dashboard。
-- Dashboard backend 仍只消费 MQTT `robot/imu`，不直接依赖 ROS 2 或 micro-ROS。
-- motor 控制当前支持 `frontend -> backend -> MQTT robot/motor/cmd` 的显式命令链路；ROS 2 / ESP32 侧如何消费该 topic 仍由外部桥接或下位机实现负责。
+- `robot/state` 会把 `/robot/state` 的 `Int32` 数值镜像为 MQTT payload，例如 `{"state":2,"state_label":"alarm"}`，供 Dashboard Sensor Status LEDs 使用。
+- Dashboard backend 仍只消费 MQTT `robot/imu`、`robot/state`，不直接依赖 ROS 2 或 micro-ROS。
+- 电机 bridge 实现仍来自外部 digital twin 仓库 `robot_mqtt_bridge`，本仓库脚本只是通过 `ROBOT_MQTT_BRIDGE_SRC_DIR` 把它作为本机联调依赖拉起。
+- 如果当前机器暂时不需要电机链路，可在启动脚本里加 `--no-motor-bridge`。
 - 只有使用 `--transport serial` 时才需要串口权限；默认 UDP 模式不读取 `/dev/ttyACM0`。
 - 日志默认保存在 `/tmp/robot_ops_microros_sensor_stack/`。
 
@@ -556,7 +592,8 @@ Dashboard backend 提供只读 WebSocket 状态流：
 - `motor` 与 `imu` 来自 MQTT 最新缓存；尚未收到对应 topic 时返回 `null`。
 - 前端 IMU 区域同时复用 `/api/robot/status` 与 `/ws/status`；按 `robot/imu` 最新 `received_at` 判断 freshness：超过 3 秒显示 `stale`，超过 10 秒显示 `offline`。
 - 前端 Motor / Encoder 区域展示 `robot_status_api_bridge` 的 motor 状态镜像；无真实 motor topic 时保留 placeholder / disconnected 状态。
-- IMU 与 Motor / Encoder 区域只展示状态，不新增控制按钮，不向 MQTT broker 发布消息。
+- 如果 `ROBOT_OPS_TASK_SOURCE=amr_http` 且上游 AMR HTTP 临时不可用，`/ws/status` 当前会把 `tasks` 退化为空并在 `robot.error` 标记任务错误，但继续保留 MQTT `imu` / `motor` 遥测，避免硬件联调时把状态流整体清空。
+- Motor / Encoder 区域提供受限的 Wheel Speed bench/demo command 入口：frontend 只调用 Dashboard backend HTTP API，不直接连接 MQTT / ROS 2 / ESP32 / TB6612，不直接下发 PWM。
 
 ## AMR 四点录屏脚本
 

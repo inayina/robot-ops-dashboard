@@ -262,6 +262,8 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 当前请求体字段：
 
 - `target_rpm`
+- `target_speed_mps`（可选，Wheel Speed / 轮端等效速度）
+- `direction`（当前前端第一版默认 `forward`，`stop=true` 时规范化为 `stop`）
 - `enabled`
 - `closed_loop`
 - `max_pwm`
@@ -270,13 +272,15 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 
 当前规范化规则：
 
-- `target_rpm` 会被限制到 `[-MOTOR_CMD_MAX_ABS_RPM, MOTOR_CMD_MAX_ABS_RPM]`
+- `target_speed_mps` 会被限制到 `[0, MOTOR_CMD_MAX_TARGET_SPEED_MPS]`，默认上限 `0.25 m/s`
+- 如果提供 `target_speed_mps`，backend 会按 `wheel_diameter_m=0.065` 换算为 `target_rpm`
+- `target_rpm` 会被限制到 `[0, MOTOR_CMD_MAX_ABS_RPM]`，默认上限 `80 rpm`
 - `max_pwm` 会被限制到 `[0, MOTOR_CMD_MAX_PWM_LIMIT]`
 - `timeout_ms` 会被限制到 `[MOTOR_CMD_MIN_TIMEOUT_MS, MOTOR_CMD_MAX_TIMEOUT_MS]`
-- `stop=true` 时会强制把 `target_rpm` 置为 `0`
+- `stop=true` 时会强制把 `target_speed_mps` 与 `target_rpm` 置为 `0`
 - backend 自动补充 `robot_id`、`source=dashboard_backend`、`command_id`、`issued_at`
 
-该接口适合本地 bench / dashboard 联调，但不表示 backend 已承担高频闭环控制职责。
+该接口适合 single N20 motor bench / dashboard 联调。Dashboard 显示的是 Wheel Speed / 轮端等效速度，不表示整车线速度，也不表示 backend 已承担高频闭环控制或 ros2_control 职责。
 
 ### `GET /api/wms/tasks`
 
@@ -313,6 +317,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `robot` 由 `mock/sample_device_status.json` 与 MQTT 最新设备状态聚合得到
 - `motor` 来自 MQTT `robot/motor/status` 最新缓存，未收到时为 `null`
 - `imu` 来自 MQTT `robot/imu` 最新缓存，未收到时为 `null`
+- 当 `ROBOT_OPS_TASK_SOURCE=amr_http` 且上游任务接口暂时失败时，状态流会把 `tasks` 退化为空，并在 `robot.error` 标记任务错误，但继续保留 MQTT `imu` / `motor` 遥测
 
 示例消息：
 

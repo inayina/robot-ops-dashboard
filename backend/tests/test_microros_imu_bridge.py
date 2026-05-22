@@ -66,6 +66,18 @@ def test_string_to_payload_wraps_non_json_text():
     assert payload["ros_topic"] == "/imu_text"
 
 
+def test_int32_to_payload_maps_robot_state_code():
+    payload = bridge.int32_to_payload(ns(data=2), robot_id="amr-001", ros_topic="/robot/state")
+
+    assert payload == {
+        "robot_id": "amr-001",
+        "state": 2,
+        "state_label": "alarm",
+        "source": "micro_ros",
+        "ros_topic": "/robot/state",
+    }
+
+
 def test_parse_mqtt_broker_accepts_host_port_without_scheme():
     assert bridge.parse_mqtt_broker("127.0.0.1:1884") == ("127.0.0.1", 1884)
     assert bridge.parse_mqtt_broker("mqtt://broker.local") == ("broker.local", 1883)
@@ -79,6 +91,28 @@ def test_bridge_defaults_are_low_rate_ros_to_dashboard_mqtt(monkeypatch):
     assert args.ros_topic == "/imu/data"
     assert args.mqtt_topic == "robot/imu"
     assert args.rate_limit_hz == 5.0
+
+
+def test_bridge_parser_accepts_int32_state_bridge(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "microros_imu_to_mqtt_bridge.py",
+            "--ros-topic",
+            "/robot/state",
+            "--message-type",
+            "std_msgs/msg/Int32",
+            "--mqtt-topic",
+            "robot/state",
+        ],
+    )
+
+    args = bridge.parse_args()
+
+    assert args.ros_topic == "/robot/state"
+    assert args.message_type == "std_msgs/msg/Int32"
+    assert args.mqtt_topic == "robot/state"
 
 
 def test_bridge_source_has_no_serial_or_control_path():

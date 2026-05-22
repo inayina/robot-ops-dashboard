@@ -41,6 +41,14 @@ class RobotStatusResponse(BaseModel):
 
 class MotorCommandRequest(BaseModel):
     target_rpm: float = Field(default=0.0, description="Requested motor target RPM.")
+    target_speed_mps: float | None = Field(
+        default=None,
+        description="Optional wheel-end equivalent target speed in m/s for low-speed bench commands.",
+    )
+    direction: Literal["forward", "reverse", "stop"] = Field(
+        default="forward",
+        description="Requested bench direction label. The first dashboard version sends forward or stop only.",
+    )
     enabled: bool = Field(default=True, description="Enable or disable the motor control path.")
     closed_loop: bool = Field(default=True, description="Whether the motor loop should remain in closed-loop mode.")
     max_pwm: float = Field(default=0.25, description="Maximum allowed PWM duty ratio.")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mirror a low-rate ROS 2 IMU topic into the Dashboard MQTT telemetry topic.
+"""Mirror a low-rate ROS 2 sensor topic into the Dashboard MQTT telemetry topic.
 
 This script runs only on the PC side. It does not read serial devices, does not
 connect to ESP32 MQTT, and does not publish any robot control commands.
@@ -37,6 +37,12 @@ def load_ros_modules(message_type: str) -> tuple[Any, Any, Any]:
         except ImportError as exc:
             raise SystemExit("缺少 std_msgs/msg/String，请确认 ROS 2 环境完整。") from exc
         msg_class = String
+    elif message_type == "std_msgs/msg/Int32":
+        try:
+            from std_msgs.msg import Int32
+        except ImportError as exc:
+            raise SystemExit("缺少 std_msgs/msg/Int32，请确认 ROS 2 环境完整。") from exc
+        msg_class = Int32
     else:
         raise SystemExit(f"暂不支持的 ROS 2 消息类型：{message_type}")
 
@@ -121,6 +127,26 @@ def string_to_payload(msg: Any, *, robot_id: str, ros_topic: str) -> dict[str, A
     return parsed
 
 
+def state_value_to_label(value: int) -> str:
+    return {
+        0: "normal",
+        1: "warning",
+        2: "alarm",
+        3: "critical",
+    }.get(value, "unknown")
+
+
+def int32_to_payload(msg: Any, *, robot_id: str, ros_topic: str) -> dict[str, Any]:
+    value = int(msg.data)
+    return {
+        "robot_id": robot_id,
+        "state": value,
+        "state_label": state_value_to_label(value),
+        "source": "micro_ros",
+        "ros_topic": ros_topic,
+    }
+
+
 class ImuToMqttBridge:
     def __init__(
         self,
@@ -157,6 +183,8 @@ class ImuToMqttBridge:
 
         if self.message_type == "sensor_msgs/msg/Imu":
             payload = imu_to_payload(msg, robot_id=self.robot_id, ros_topic=self.ros_topic)
+        elif self.message_type == "std_msgs/msg/Int32":
+            payload = int32_to_payload(msg, robot_id=self.robot_id, ros_topic=self.ros_topic)
         else:
             payload = string_to_payload(msg, robot_id=self.robot_id, ros_topic=self.ros_topic)
 
@@ -169,7 +197,9 @@ class ImuToMqttBridge:
 
         self.count += 1
         if self.count == 1 or self.count % 50 == 0:
-            self.node.get_logger().info(f"Published {self.count} IMU messages to MQTT")
+            self.node.get_logger().info(
+                f"Published {self.count} sensor messages to MQTT {self.mqtt_topic}"
+            )
 
 
 def parse_args() -> argparse.Namespace:
@@ -180,7 +210,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--message-type",
         default="sensor_msgs/msg/Imu",
-        choices=("sensor_msgs/msg/Imu", "std_msgs/msg/String"),
+        choices=("sensor_msgs/msg/Imu", "std_msgs/msg/String", "std_msgs/msg/Int32"),
         help="ROS 2 message type on --ros-topic.",
     )
     parser.add_argument("--mqtt-broker", default="mqtt://127.0.0.1:1883", help="MQTT broker URL.")

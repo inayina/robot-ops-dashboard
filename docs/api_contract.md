@@ -266,7 +266,7 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 
 前端 MPU6050 / IMU 区域会同时读取顶层 `imu` 和 `robot.mqtt.topics["robot/imu"]`。其中 `received_at` 用于展示 `last_seen` 并计算 freshness：超过 3 秒显示 `stale`，超过 10 秒显示 `offline`。
 
-前端 Motor / Encoder 区域会读取顶层 `motor` 或 `robot.mqtt.topics["robot/motor/status"].payload`。当前主要展示 `actual_rpm`，并容错解析 `motor_state` JSON 字符串里的 `target_rpm`、`actual_rpm`、`error_rpm`、`pwm_duty`、`direction`、`control_enabled`、`saturated`、`timeout`、`estop`、`fault`、`source`、`loop`。本地 N20 closed-loop bench CSV 字段如 `target_ticks_per_sec`、`measured_ticks_per_sec`、`encoder_count`、`invalid_transitions` 暂保留占位，只有后续被桥接到 payload 时才会显示。该区域不提供远程启动电机、设置 PWM 或下发目标速度能力。
+前端 Motor / Encoder 区域会读取顶层 `motor` 或 `robot.mqtt.topics["robot/motor/status"].payload`。当前展示 Wheel Speed / 轮端等效速度，并保留 `target_rpm`、`actual_rpm` / `measured_rpm`、`error_rpm`、`pwm_duty` / `pwm` 等调试字段。Wheel Speed 按 `wheel_diameter_m=0.065` 从 rpm 换算：`speed_mps = rpm * Math.PI * wheel_diameter_m / 60`。该速度是 single N20 motor bench 的轮端等效速度，不是 Robot Speed / 整车速度。页面提供保守的 Wheel Speed slider，拖动只更新 UI，点击 `Apply` 后才通过 `POST /api/robot/motor/cmd` 下发；不直接连接 MQTT / ROS 2 / ESP32 / TB6612，也不直接下发 PWM。
 
 ## 9.1 MQTT RobotStatus
 

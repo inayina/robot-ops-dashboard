@@ -4,6 +4,11 @@ const WS_RECONNECT_DELAY_MS = 3000;
 const IMU_STALE_AFTER_MS = 2000;
 const IMU_OFFLINE_AFTER_MS = 5000;
 const IMU_HISTORY_LIMIT = 30;
+const MOTOR_WHEEL_DIAMETER_M = 0.065;
+const MOTOR_WHEEL_CIRCUMFERENCE_M = Math.PI * MOTOR_WHEEL_DIAMETER_M;
+const MOTOR_BENCH_MAX_RPM = 80;
+const MOTOR_SPEED_SLIDER_MAX_MPS = 0.25;
+const MOTOR_DEFAULT_MAX_PWM = 0.25;
 const WS_STATUS_URL = window.WS_STATUS_URL || buildWebSocketUrl(API_BASE_URL, "/ws/status");
 
 const DATA_FILES = {
@@ -74,6 +79,11 @@ const rootNodes = {
   imuStatusDot: document.querySelector("#imuStatusDot"),
   imuStatusLabel: document.querySelector("#imuStatusLabel"),
   imuLastUpdateAgo: document.querySelector("#imuLastUpdateAgo"),
+  sensorLedNormal: document.querySelector("#sensorLedNormal"),
+  sensorLedWarning: document.querySelector("#sensorLedWarning"),
+  sensorLedAlarm: document.querySelector("#sensorLedAlarm"),
+  sensorLedCurrent: document.querySelector("#sensorLedCurrent"),
+  sensorLedLastUpdate: document.querySelector("#sensorLedLastUpdate"),
   imuSource: document.querySelector("#imuSource"),
   imuRosTopic: document.querySelector("#imuRosTopic"),
   imuMqttTopic: document.querySelector("#imuMqttTopic"),
@@ -102,14 +112,23 @@ const rootNodes = {
   motorEnableSwitch: document.querySelector("#motorEnableSwitch"),
   motorTargetRpmInput: document.querySelector("#motorTargetRpmInput"),
   motorMaxPwmInput: document.querySelector("#motorMaxPwmInput"),
+  motorTargetSpeedSlider: document.querySelector("#motorTargetSpeedSlider"),
+  motorTargetSpeedInputValue: document.querySelector("#motorTargetSpeedInputValue"),
+  motorTargetRpmInputValue: document.querySelector("#motorTargetRpmInputValue"),
+  motorDirectionInputValue: document.querySelector("#motorDirectionInputValue"),
   motorTimeoutInput: document.querySelector("#motorTimeoutInput"),
   motorApplyButton: document.querySelector("#motorApplyButton"),
   motorStopButton: document.querySelector("#motorStopButton"),
   motorCommandMessage: document.querySelector("#motorCommandMessage"),
+  motorTargetWheelSpeed: document.querySelector("#motorTargetWheelSpeed"),
+  motorActualWheelSpeed: document.querySelector("#motorActualWheelSpeed"),
   motorMeasuredRpm: document.querySelector("#motorMeasuredRpm"),
   motorTargetRpm: document.querySelector("#motorTargetRpm"),
   motorErrorRpm: document.querySelector("#motorErrorRpm"),
   motorPwmValue: document.querySelector("#motorPwmValue"),
+  motorDirectionValue: document.querySelector("#motorDirectionValue"),
+  motorWheelStatusValue: document.querySelector("#motorWheelStatusValue"),
+  motorBenchLimitValue: document.querySelector("#motorBenchLimitValue"),
   motorEnabledValue: document.querySelector("#motorEnabledValue"),
   motorClosedLoopValue: document.querySelector("#motorClosedLoopValue"),
   motorFaultValue: document.querySelector("#motorFaultValue"),
@@ -374,7 +393,9 @@ function refreshMotorDisplay() {
 
 function extractImuSnapshotFromRobotStatus(payload) {
   const topicMessage = payload?.topics?.["robot/imu"] || null;
+  const robotStateMessage = payload?.topics?.["robot/state"] || null;
   const imuPayload = payload?.robot?.imu ?? topicMessage?.payload ?? null;
+  const robotStatePayload = payload?.robot?.state ?? robotStateMessage?.payload ?? null;
 
   return {
     topic: "robot/imu",
@@ -383,6 +404,12 @@ function extractImuSnapshotFromRobotStatus(payload) {
     connection: payload?.connection || null,
     message: topicMessage,
     payload: imuPayload,
+    robot_state: {
+      topic: "robot/state",
+      message: robotStateMessage,
+      payload: robotStatePayload,
+      last_seen: robotStateMessage?.received_at || pickTimestampFromPayload(robotStatePayload),
+    },
     last_seen: topicMessage?.received_at || pickTimestampFromPayload(imuPayload),
   };
 }
@@ -390,7 +417,9 @@ function extractImuSnapshotFromRobotStatus(payload) {
 function extractImuSnapshotFromStatusMessage(payload) {
   const mqttStatus = payload?.robot?.mqtt || null;
   const topicMessage = mqttStatus?.topics?.["robot/imu"] || null;
+  const robotStateMessage = mqttStatus?.topics?.["robot/state"] || null;
   const imuPayload = payload?.imu ?? mqttStatus?.robot?.imu ?? topicMessage?.payload ?? null;
+  const robotStatePayload = mqttStatus?.robot?.state ?? robotStateMessage?.payload ?? null;
 
   return {
     topic: "robot/imu",
@@ -399,6 +428,12 @@ function extractImuSnapshotFromStatusMessage(payload) {
     connection: mqttStatus?.connection || null,
     message: topicMessage,
     payload: imuPayload,
+    robot_state: {
+      topic: "robot/state",
+      message: robotStateMessage,
+      payload: robotStatePayload,
+      last_seen: robotStateMessage?.received_at || pickTimestampFromPayload(robotStatePayload),
+    },
     last_seen: topicMessage?.received_at || pickTimestampFromPayload(imuPayload),
   };
 }
@@ -466,6 +501,7 @@ function renderImuStatus(snapshot, options = {}) {
   setStateClass(rootNodes.imuFreshness, "imu-freshness", view.linkStatus);
   setStateClass(rootNodes.imuStatusDot, "status-dot", view.linkStatus);
   setText(rootNodes.imuLastUpdateAgo, view.lastUpdateAgo);
+  renderSensorStatusLeds(view.sensorStatus);
   setText(rootNodes.imuSource, view.source);
   setText(rootNodes.imuRosTopic, view.rosTopic);
   setText(rootNodes.imuMqttTopic, view.mqttTopic);
@@ -526,10 +562,15 @@ function renderMotorStatus(snapshot, options = {}) {
   setText(rootNodes.motorSource, `source: ${view.source}`);
   setText(rootNodes.motorMqttTopic, view.mqttTopic);
   setText(rootNodes.motorLastMessageAt, view.lastMessageAt);
+  setText(rootNodes.motorTargetWheelSpeed, view.targetWheelSpeed);
+  setText(rootNodes.motorActualWheelSpeed, view.actualWheelSpeed);
   setText(rootNodes.motorMeasuredRpm, view.measuredRpm);
   setText(rootNodes.motorTargetRpm, view.targetRpm);
   setText(rootNodes.motorErrorRpm, view.errorRpm);
   setText(rootNodes.motorPwmValue, view.pwm);
+  setText(rootNodes.motorDirectionValue, view.direction);
+  setText(rootNodes.motorWheelStatusValue, view.wheelStatus);
+  setText(rootNodes.motorBenchLimitValue, view.benchLimit);
   setText(rootNodes.motorEnabledValue, view.enabled);
   setText(rootNodes.motorClosedLoopValue, view.closedLoop);
   setText(rootNodes.motorFaultValue, view.fault);
@@ -566,6 +607,20 @@ function buildMotorViewModel(snapshot) {
     snapshot?.connection?.last_message_at ||
     snapshot?.last_seen;
   const displayStatus = buildMotorDisplayStatus(linkStatus, motorStatus);
+  const actualRpmRaw =
+    pickFirstValue(payload, ["measured_rpm", "actual_rpm", "actualRpm"]) ??
+    pickFirstValue(motorState, ["measured_rpm", "actual_rpm", "actualRpm"]);
+  const targetRpmRaw =
+    pickFirstValue(motorState, ["target_rpm", "targetRpm"]) ??
+    pickFirstValue(payload, ["target_rpm", "targetRpm"]);
+  const targetSpeedRaw =
+    pickFirstValue(payload, ["target_speed_mps", "targetSpeedMps"]) ??
+    pickFirstValue(motorState, ["target_speed_mps", "targetSpeedMps"]) ??
+    rpmToWheelSpeed(targetRpmRaw);
+  const actualSpeedRaw =
+    pickFirstValue(payload, ["actual_speed_mps", "actualSpeedMps", "measured_speed_mps", "measuredSpeedMps"]) ??
+    pickFirstValue(motorState, ["actual_speed_mps", "actualSpeedMps", "measured_speed_mps", "measuredSpeedMps"]) ??
+    rpmToWheelSpeed(actualRpmRaw);
 
   return {
     hasPayload: Boolean(payload),
@@ -574,16 +629,29 @@ function buildMotorViewModel(snapshot) {
     source: snapshot?.source || "-",
     mqttTopic: snapshot?.topic || "robot/motor/status",
     lastMessageAt: formatDate(lastMessageAt),
-    measuredRpm: formatMotorNumber(
-      pickFirstValue(payload, ["measured_rpm", "actual_rpm", "actualRpm"]) ??
-        pickFirstValue(motorState, ["measured_rpm", "actual_rpm", "actualRpm"])
-    ),
-    targetRpm: formatMotorNumber(pickFirstValue(motorState, ["target_rpm", "targetRpm"]) ?? pickFirstValue(payload, ["target_rpm", "targetRpm"])),
+    targetWheelSpeed: formatSpeedMps(targetSpeedRaw),
+    actualWheelSpeed: formatSpeedMps(actualSpeedRaw),
+    measuredRpm: formatRpm(actualRpmRaw),
+    targetRpm: formatRpm(targetRpmRaw),
     errorRpm: formatMotorNumber(pickFirstValue(motorState, ["error_rpm", "errorRpm"]) ?? pickFirstValue(payload, ["error_rpm", "errorRpm"])),
     pwm: formatMotorNumber(
       pickFirstValue(payload, ["pwm", "pwm_duty", "pwmDuty"]) ??
         pickFirstValue(motorState, ["pwm", "pwm_duty", "pwmDuty"])
     ),
+    direction: formatMotorDirection(
+      pickFirstValue(payload, ["direction", "motor_direction", "motorDirection"]) ??
+        pickFirstValue(motorState, ["direction", "motor_direction", "motorDirection"]) ??
+        targetRpmRaw
+    ),
+    wheelStatus: buildWheelBenchStatus({
+      hasPayload: Boolean(payload),
+      linkStatus,
+      targetRpm: targetRpmRaw,
+      actualRpm: actualRpmRaw,
+      motorState: motorStateView,
+      motorStatus,
+    }),
+    benchLimit: `max ${MOTOR_BENCH_MAX_RPM} rpm`,
     enabled: formatBooleanLike(
       pickFirstValue(payload, ["enabled", "control_enabled", "controlEnabled"]) ??
         pickFirstValue(motorState, ["enabled", "control_enabled", "controlEnabled"])
@@ -706,6 +774,78 @@ function formatMotorSafetyFlags(motorState) {
   ].join(" / ");
 }
 
+function buildWheelBenchStatus({ hasPayload, linkStatus, targetRpm, actualRpm, motorState, motorStatus }) {
+  if (!hasPayload || linkStatus === "offline") {
+    return "no data";
+  }
+
+  if (isTruthyFlag(pickFirstValue(motorState, ["timeout", "timeout_active", "timeoutActive"]))) {
+    return "timeout";
+  }
+
+  if (isTruthyFlag(pickFirstValue(motorState, ["saturated", "saturation", "is_saturated", "isSaturated"]))) {
+    return "saturated";
+  }
+
+  const status = String(motorStatus || "").toLowerCase();
+  if (status === "timeout") {
+    return "timeout";
+  }
+  if (status === "saturated") {
+    return "saturated";
+  }
+  if (status === "stopped" || status === "stop") {
+    return "stopped";
+  }
+
+  const target = Math.abs(toFiniteNumber(targetRpm) || 0);
+  const actual = Math.abs(toFiniteNumber(actualRpm) || 0);
+  if (target < 0.5 && actual < 0.5) {
+    return "stopped";
+  }
+
+  return "tracking";
+}
+
+function formatMotorDirection(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue !== undefined) {
+    if (numericValue > 0) {
+      return "forward";
+    }
+    if (numericValue < 0) {
+      return "reverse";
+    }
+    return "stop";
+  }
+
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["forward", "fwd", "cw", "1"].includes(normalized)) {
+    return "forward";
+  }
+  if (["reverse", "rev", "ccw", "-1"].includes(normalized)) {
+    return "reverse";
+  }
+  if (["stop", "stopped", "0"].includes(normalized)) {
+    return "stop";
+  }
+
+  return "-";
+}
+
+function isTruthyFlag(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
 function buildImuViewModel(snapshot) {
   const payload = snapshot?.payload || null;
   const lastSeenDate = parseDateTime(snapshot?.last_seen);
@@ -725,6 +865,7 @@ function buildImuViewModel(snapshot) {
   const attitude = extractAttitude(payload);
   const rosTopic = pickFirstString(payload, ["ros_topic", "topic", "source_topic"]) || "-";
   const payloadSource = pickFirstString(payload, ["source", "source_type"]) || snapshot?.source || "-";
+  const sensorStatus = buildSensorStatusView(snapshot?.robot_state);
 
   return {
     hasPayload: Boolean(payload),
@@ -743,7 +884,114 @@ function buildImuViewModel(snapshot) {
     attitude,
     temperature: pickFirstValue(payload, ["temperature", "temperature_c", "temp_c", "temp", "imu_temperature"]),
     state: linkStatus === "online" ? payloadState || "online" : linkStatus,
+    sensorStatus,
   };
+}
+
+function renderSensorStatusLeds(sensorStatus) {
+  const status = sensorStatus || buildSensorStatusView(null);
+  const activeState = status.state;
+
+  setSensorLedBadge(rootNodes.sensorLedNormal, "normal", activeState === "normal");
+  setSensorLedBadge(rootNodes.sensorLedWarning, "warning", activeState === "warning");
+  setSensorLedBadge(rootNodes.sensorLedAlarm, status.alarmBadgeState, ["alarm", "critical"].includes(activeState));
+  setText(rootNodes.sensorLedCurrent, `Current: ${status.label}`);
+  setText(rootNodes.sensorLedLastUpdate, `Last update: ${status.lastUpdateLabel}`);
+}
+
+function setSensorLedBadge(node, state, isActive) {
+  if (!node) {
+    return;
+  }
+
+  node.className = `sensor-led-badge ${state}${isActive ? " active" : ""}`;
+}
+
+function buildSensorStatusView(robotState) {
+  const payload = robotState?.payload;
+  const lastSeenDate = parseDateTime(robotState?.last_seen);
+
+  if (payload === undefined || payload === null || payload === "" || !lastSeenDate) {
+    return {
+      state: "no-data",
+      label: "No Data",
+      alarmBadgeState: "no-data",
+      lastUpdateLabel: "--:--:--",
+    };
+  }
+
+  if (Date.now() - lastSeenDate.getTime() > IMU_OFFLINE_AFTER_MS) {
+    return {
+      state: "no-data",
+      label: "No Data",
+      alarmBadgeState: "no-data",
+      lastUpdateLabel: formatClockTime(lastSeenDate),
+    };
+  }
+
+  const mapped = mapRobotStateToSensorStatus(extractRobotStateValue(payload));
+  return {
+    ...mapped,
+    lastUpdateLabel: formatClockTime(lastSeenDate),
+  };
+}
+
+function extractRobotStateValue(payload) {
+  if (!isObjectRecord(payload)) {
+    return payload;
+  }
+
+  return pickFirstValue(payload, [
+    "state",
+    "State",
+    "status",
+    "Status",
+    "robot_state",
+    "robotState",
+    "sensor_state",
+    "sensorState",
+    "health_status",
+    "healthStatus",
+    "severity",
+    "level",
+  ]);
+}
+
+function mapRobotStateToSensorStatus(value) {
+  if (value === undefined || value === null || value === "") {
+    return { state: "no-data", label: "No Data", alarmBadgeState: "no-data" };
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  const stateNumber = toFiniteNumber(normalized) ?? extractStateNumber(normalized);
+
+  if (stateNumber === 0 || normalized === "normal" || normalized === "ok" || normalized === "online") {
+    return { state: "normal", label: "Normal", alarmBadgeState: "alarm" };
+  }
+  if (stateNumber === 1 || normalized === "warning" || normalized === "warn") {
+    return { state: "warning", label: "Warning", alarmBadgeState: "alarm" };
+  }
+  if (stateNumber === 2 || normalized === "alarm") {
+    return { state: "alarm", label: "Alarm", alarmBadgeState: "alarm" };
+  }
+  if (stateNumber === 3 || ["severe", "critical", "crit"].includes(normalized)) {
+    return { state: "critical", label: "Critical", alarmBadgeState: "critical" };
+  }
+
+  if (["missing", "timeout", "timed_out", "no_data", "unknown", "offline"].includes(normalized)) {
+    return { state: "no-data", label: "No Data", alarmBadgeState: "no-data" };
+  }
+
+  return { state: "no-data", label: "No Data", alarmBadgeState: "no-data" };
+}
+
+function extractStateNumber(value) {
+  const match = String(value).match(/state\s*:\s*([0-3])/i);
+  if (!match) {
+    return undefined;
+  }
+
+  return Number(match[1]);
 }
 
 function extractAttitude(payload) {
@@ -1144,17 +1392,28 @@ function setupMotorCommandControls() {
     rootNodes.motorCommandForm.addEventListener("submit", handleMotorCommandSubmit);
   }
 
+  if (rootNodes.motorTargetSpeedSlider) {
+    rootNodes.motorTargetSpeedSlider.addEventListener("input", renderMotorCommandReadout);
+  }
+
   if (rootNodes.motorStopButton) {
     rootNodes.motorStopButton.addEventListener("click", handleMotorStopClick);
   }
+
+  renderMotorCommandReadout();
 }
 
 function readMotorCommandFormPayload(options = {}) {
+  const targetSpeedMps = options.stop ? 0 : readMotorTargetSpeedMps();
+  const targetRpm = clampMotorTargetRpm(wheelSpeedToRpm(targetSpeedMps));
+
   return {
-    target_rpm: options.stop ? 0 : toFiniteNumber(rootNodes.motorTargetRpmInput?.value) || 0,
-    enabled: options.stop ? false : Boolean(rootNodes.motorEnableSwitch?.checked),
+    target_rpm: options.stop ? 0 : targetRpm,
+    target_speed_mps: options.stop ? 0 : targetSpeedMps,
+    direction: "forward",
+    enabled: !options.stop,
     closed_loop: true,
-    max_pwm: toFiniteNumber(rootNodes.motorMaxPwmInput?.value) || 0.25,
+    max_pwm: MOTOR_DEFAULT_MAX_PWM,
     timeout_ms: Math.round(toFiniteNumber(rootNodes.motorTimeoutInput?.value) || 800),
     stop: Boolean(options.stop),
   };
@@ -1166,20 +1425,20 @@ async function handleMotorCommandSubmit(event) {
   const payload = readMotorCommandFormPayload();
   setMotorControlsDisabled(true);
   renderMotorCommandMessage(
-    `Publishing motor cmd: rpm ${payload.target_rpm}, max_pwm ${payload.max_pwm.toFixed(2)}, timeout ${payload.timeout_ms} ms`
+    `Publishing wheel speed cmd: ${payload.target_speed_mps.toFixed(2)} m/s -> ${payload.target_rpm.toFixed(1)} rpm, timeout ${payload.timeout_ms} ms`
   );
 
   try {
     const response = await postJson(DATA_FILES.motorCommand, payload);
     const publishedPayload = response?.payload || payload;
     renderMotorCommandMessage(
-      `Motor cmd published: rpm ${publishedPayload.target_rpm}, max_pwm ${publishedPayload.max_pwm}, timeout ${publishedPayload.timeout_ms} ms`
+      `Motor cmd published: ${formatSpeedMps(publishedPayload.target_speed_mps)} -> ${formatRpm(publishedPayload.target_rpm)}, timeout ${publishedPayload.timeout_ms} ms`
     );
     appendEventStreamEntry({
       key: response?.payload?.command_id || `motor-cmd-${Date.now()}`,
       status: "online",
       title: "Motor command published",
-      detail: `target_rpm: ${publishedPayload.target_rpm} · stop: ${publishedPayload.stop ? "yes" : "no"}`,
+      detail: `target_speed: ${formatSpeedMps(publishedPayload.target_speed_mps)} · target_rpm: ${formatRpm(publishedPayload.target_rpm)} · stop: ${publishedPayload.stop ? "yes" : "no"}`,
       timestamp: response?.published_at,
     });
   } catch (error) {
@@ -1208,12 +1467,16 @@ async function handleMotorStopClick() {
     if (rootNodes.motorTargetRpmInput) {
       rootNodes.motorTargetRpmInput.value = "0";
     }
+    if (rootNodes.motorTargetSpeedSlider) {
+      rootNodes.motorTargetSpeedSlider.value = "0";
+      renderMotorCommandReadout();
+    }
     renderMotorCommandMessage("Stop command published.");
     appendEventStreamEntry({
       key: response?.payload?.command_id || `motor-stop-${Date.now()}`,
       status: "stale",
       title: "Motor stop published",
-      detail: "stop=true",
+      detail: "target_speed_mps=0 · target_rpm=0 · stop=true",
       timestamp: response?.published_at,
     });
   } catch (error) {
@@ -1239,9 +1502,55 @@ function setMotorControlsDisabled(disabled) {
   if (rootNodes.motorMaxPwmInput) {
     rootNodes.motorMaxPwmInput.disabled = disabled;
   }
+  if (rootNodes.motorTargetSpeedSlider) {
+    rootNodes.motorTargetSpeedSlider.disabled = disabled;
+  }
   if (rootNodes.motorTimeoutInput) {
     rootNodes.motorTimeoutInput.disabled = disabled;
   }
+}
+
+function renderMotorCommandReadout() {
+  const targetSpeedMps = readMotorTargetSpeedMps();
+  const targetRpm = clampMotorTargetRpm(wheelSpeedToRpm(targetSpeedMps));
+
+  setText(rootNodes.motorTargetSpeedInputValue, formatSpeedMps(targetSpeedMps));
+  setText(rootNodes.motorTargetRpmInputValue, formatRpm(targetRpm));
+  setText(rootNodes.motorDirectionInputValue, "forward");
+}
+
+function readMotorTargetSpeedMps() {
+  return clampNumber(
+    toFiniteNumber(rootNodes.motorTargetSpeedSlider?.value) || 0,
+    0,
+    MOTOR_SPEED_SLIDER_MAX_MPS
+  );
+}
+
+function wheelSpeedToRpm(speedMps) {
+  const numericValue = toFiniteNumber(speedMps);
+  if (numericValue === undefined || MOTOR_WHEEL_CIRCUMFERENCE_M <= 0) {
+    return 0;
+  }
+
+  return numericValue * 60 / MOTOR_WHEEL_CIRCUMFERENCE_M;
+}
+
+function rpmToWheelSpeed(rpm) {
+  const numericValue = toFiniteNumber(rpm);
+  if (numericValue === undefined) {
+    return undefined;
+  }
+
+  return numericValue * MOTOR_WHEEL_CIRCUMFERENCE_M / 60;
+}
+
+function clampMotorTargetRpm(rpm) {
+  return clampNumber(toFiniteNumber(rpm) || 0, 0, MOTOR_BENCH_MAX_RPM);
+}
+
+function clampNumber(value, minValue, maxValue) {
+  return Math.max(minValue, Math.min(maxValue, value));
 }
 
 function renderMotorCommandMessage(message, isError = false) {
@@ -1887,6 +2196,20 @@ function formatDate(value) {
   }).format(date);
 }
 
+function formatClockTime(value) {
+  const date = value instanceof Date ? value : parseDateTime(value);
+  if (!date) {
+    return "--:--:--";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function parseDateTime(value) {
   if (!value) {
     return null;
@@ -1971,6 +2294,24 @@ function formatMotorNumber(value) {
   }
 
   return numericValue.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatSpeedMps(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return "--.-- m/s";
+  }
+
+  return `${numericValue.toFixed(2)} m/s`;
+}
+
+function formatRpm(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return "----- rpm";
+  }
+
+  return `${formatMotorNumber(numericValue)} rpm`;
 }
 
 function formatBooleanLike(value) {
