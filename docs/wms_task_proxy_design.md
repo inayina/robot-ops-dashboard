@@ -88,11 +88,11 @@ Backend 转发到 AMR Mock WMS API：
 
 ## 6. 与 MQTT 的关系
 
-MQTT 保持只读状态接入，只用于设备状态观察：
+MQTT 在本设计中不承担任务下发；设备状态通过订阅 topic 进入 Dashboard，电机 bench 命令由独立设计的显式接口承担：
 
 - 不通过 MQTT 发布任务
-- 不通过 MQTT 控制电机
-- 不通过 MQTT 改变机器人行为
+- 不通过 MQTT 下发 Nav2 目标或调度任务
+- 不在 WMS task proxy 中改变电机或机器人底层行为
 
 ## 7. 验证口径
 

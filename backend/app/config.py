@@ -32,7 +32,7 @@ def _env_flag(name: str, default: str) -> bool:
 # - AMR_API_BASE_URL: base URL for upstream AMR Mock WMS HTTP API
 # - AMR_HTTP_TIMEOUT_SECONDS: request timeout seconds for upstream calls
 # - DASHBOARD_WS_STATUS_INTERVAL_SECONDS: backend-to-frontend status push interval
-# - MQTT_BROKER_URL: local MQTT broker used for read-only robot telemetry
+# - MQTT_BROKER_URL: local MQTT broker used for robot telemetry and motor bench command topics
 # - MQTT_KEEPALIVE_SECONDS: MQTT client keepalive interval
 ROBOT_OPS_TASK_SOURCE = os.getenv("ROBOT_OPS_TASK_SOURCE", "mock_json")
 AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")

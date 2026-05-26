@@ -1,6 +1,6 @@
 # 当前仓库范围说明
 
-更新时间：`2026-05-21`
+更新时间：`2026-05-24`
 
 ## 1. 当前默认口径
 
@@ -10,6 +10,7 @@
 
 - Dashboard 的首要职责是读取、聚合、展示任务与设备状态。
 - Dashboard 是观察与监控层，不是机器人控制器。
+- IMU、robot state 与设备遥测链路保持只读镜像；电机 bench 命令链路是显式、低频、受限交互。
 - AMR 集成边界保持在 HTTP API 层。
 - Dashboard backend 不直接依赖 ROS 2、Nav2 或 Gazebo。
 - 前端继续保持纯 HTML / CSS / JavaScript。
@@ -36,6 +37,7 @@
 - `/api/robot/status` 只返回 backend 内存中的 MQTT 最新缓存。
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy。
 - `/api/robot/motor/cmd` 会把命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制。
+- Motor / Encoder 卡片中的 `Closed-loop tuning trend` 只在 Dashboard 前端记录最近状态样本，用于观察 `target_rpm`、`measured_rpm` / `actual_rpm`、`error_rpm` 与 `pwm/max_pwm` 的调参趋势。
 
 ## 3. 当前交互边界
 
@@ -46,6 +48,7 @@
 - 不提供多机器人调度能力。
 - 前端不直接连接 ROS 2 或 MQTT。
 - motor command 更适合本地 bench / dashboard 联调，不应被表述为完整机器人控制平面。
+- Motor closed-loop tuning trend 是 dashboard 侧低频可视化，不参与实时闭环控制，也不会向 ROS 2、MQTT 或硬件写入任何新命令。
 
 ## 4. 文档阅读建议
 
@@ -56,4 +59,4 @@
 3. `backend/README.md`
 4. `docs/` 下的设计与集成文档
 
-`docs/` 中若有文档仍保留更旧的只读表述，应以本文件、根目录 `README.md` 和当前代码实现为准。
+`docs/` 中若有文档仍把整个 Dashboard 表述为只读，应以本文件、根目录 `README.md` 和当前代码实现为准；当前只有 IMU / robot state 等状态镜像链路按只读处理。

@@ -17,6 +17,9 @@ Dashboard 页面规划服务于两个关键词：
 
 - 快速查看当前机器人系统整体健康度
 - 适合项目负责人、运维和值班人员第一眼查看
+- 当前首页优先把任务流、阻塞状态、设备链路和告警状态放在首屏摘要中；它不是纯只读页面，但所有交互都必须走显式 backend HTTP API。
+- 当前前端首页采用单屏机器人运维驾驶舱布局：顶部固定状态摘要栏；左列收敛为 `Robot Link` 与 `Robot Info` 两张主卡；中列以 IMU 姿态和 Motor Trend 为核心展示，数据流只保留单行链路标签；右列依次为 `Current Task`、`Task Dispatch`、`CMD_VEL` 与 `Safety STOP`；底部固定为 `Event Log` 与 `Current Task Progress` 双栏。
+- 首页不再按长网页组织，`body` 禁止上下滚动；卡片使用固定 header/body/footer 分层，长文本统一单行裁剪，NetworkError 等长错误只进入 Event Log，主卡片保留短状态和离线预览占位。
 
 建议模块：
 
@@ -145,3 +148,4 @@ V0.2 开始，建议先围绕以下页面做原型：
 
 - 当前首页 Motor / Encoder 卡片已包含受限控制表单，用于低频 bench 联调。
 - 这不等同于提供独立的底盘调参台或实时控制工作台。
+- 当前页面口径应表述为 monitoring-first dashboard with explicit interactions，而不是 read-only dashboard。

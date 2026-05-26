@@ -4,6 +4,7 @@ const WS_RECONNECT_DELAY_MS = 3000;
 const IMU_STALE_AFTER_MS = 2000;
 const IMU_OFFLINE_AFTER_MS = 5000;
 const IMU_HISTORY_LIMIT = 30;
+const MOTOR_HISTORY_LIMIT = 60;
 const MOTOR_WHEEL_DIAMETER_M = 0.065;
 const MOTOR_WHEEL_CIRCUMFERENCE_M = Math.PI * MOTOR_WHEEL_DIAMETER_M;
 const MOTOR_BENCH_MAX_RPM = 80;
@@ -64,6 +65,19 @@ const rootNodes = {
   systemWarningDevices: document.querySelector("#systemWarningDevices"),
   systemCriticalDevices: document.querySelector("#systemCriticalDevices"),
   systemLastUpdate: document.querySelector("#systemLastUpdate"),
+  headerRosStatus: document.querySelector("#headerRosStatus"),
+  headerMicroRosStatus: document.querySelector("#headerMicroRosStatus"),
+  headerMqttStatus: document.querySelector("#headerMqttStatus"),
+  previewMode: document.querySelector("#previewMode"),
+  linkBackendStatus: document.querySelector("#linkBackendStatus"),
+  linkStreamStatus: document.querySelector("#linkStreamStatus"),
+  linkImuStatus: document.querySelector("#linkImuStatus"),
+  linkImuLatency: document.querySelector("#linkImuLatency"),
+  linkMicroRosStatus: document.querySelector("#linkMicroRosStatus"),
+  linkMqttStatus: document.querySelector("#linkMqttStatus"),
+  linkMotorStatus: document.querySelector("#linkMotorStatus"),
+  linkMotorLatency: document.querySelector("#linkMotorLatency"),
+  linkBatteryStatus: document.querySelector("#linkBatteryStatus"),
   taskActiveCount: document.querySelector("#taskActiveCount"),
   taskBlockedCount: document.querySelector("#taskBlockedCount"),
   taskCompletedCount: document.querySelector("#taskCompletedCount"),
@@ -71,8 +85,15 @@ const rootNodes = {
   taskCurrentId: document.querySelector("#taskCurrentId"),
   taskCurrentStatus: document.querySelector("#taskCurrentStatus"),
   taskCurrentRoute: document.querySelector("#taskCurrentRoute"),
+  taskCurrentRobot: document.querySelector("#taskCurrentRobot"),
+  taskCurrentSource: document.querySelector("#taskCurrentSource"),
+  taskCurrentBlockReason: document.querySelector("#taskCurrentBlockReason"),
   taskProgressValue: document.querySelector("#taskProgressValue"),
   taskProgressFill: document.querySelector("#taskProgressFill"),
+  taskCardProgress: document.querySelector("#taskCardProgress"),
+  taskCardProgressFill: document.querySelector("#taskCardProgressFill"),
+  taskStageValue: document.querySelector("#taskStageValue"),
+  taskStepValue: document.querySelector("#taskStepValue"),
   imuMeta: document.querySelector("#imuMeta"),
   imuStatusPanel: document.querySelector("#imuStatusPanel"),
   imuFreshness: document.querySelector("#imuFreshness"),
@@ -89,6 +110,7 @@ const rootNodes = {
   imuMqttTopic: document.querySelector("#imuMqttTopic"),
   imuLastMessageAt: document.querySelector("#imuLastMessageAt"),
   imuAttitudeCube: document.querySelector("#imuAttitudeCube"),
+  imuEmptyHint: document.querySelector("#imuEmptyHint"),
   imuAttitudeSource: document.querySelector("#imuAttitudeSource"),
   imuRollValue: document.querySelector("#imuRollValue"),
   imuPitchValue: document.querySelector("#imuPitchValue"),
@@ -108,6 +130,9 @@ const rootNodes = {
   motorSource: document.querySelector("#motorSource"),
   motorMqttTopic: document.querySelector("#motorMqttTopic"),
   motorLastMessageAt: document.querySelector("#motorLastMessageAt"),
+  motorTrendSampleCount: document.querySelector("#motorTrendSampleCount"),
+  motorTrendPlaceholder: document.querySelector("#motorTrendPlaceholder"),
+  cmdCard: document.querySelector(".cmd-card"),
   motorCommandForm: document.querySelector("#motorCommandForm"),
   motorEnableSwitch: document.querySelector("#motorEnableSwitch"),
   motorTargetRpmInput: document.querySelector("#motorTargetRpmInput"),
@@ -145,6 +170,18 @@ const rootNodes = {
   motorEncoderCount: document.querySelector("#motorEncoderCount"),
   motorInvalidTransitions: document.querySelector("#motorInvalidTransitions"),
   motorStateValue: document.querySelector("#motorStateValue"),
+  robotInfoId: document.querySelector("#robotInfoId"),
+  robotInfoFirmware: document.querySelector("#robotInfoFirmware"),
+  robotInfoRuntime: document.querySelector("#robotInfoRuntime"),
+  robotInfoIp: document.querySelector("#robotInfoIp"),
+  robotInfoMqttTopic: document.querySelector("#robotInfoMqttTopic"),
+  pipelineEsp32: document.querySelector("#pipelineEsp32"),
+  pipelineMicroRos: document.querySelector("#pipelineMicroRos"),
+  pipelineRos: document.querySelector("#pipelineRos"),
+  pipelineMqtt: document.querySelector("#pipelineMqtt"),
+  pipelineBackend: document.querySelector("#pipelineBackend"),
+  pipelineFrontend: document.querySelector("#pipelineFrontend"),
+  safetyStatusValue: document.querySelector("#safetyStatusValue"),
   eventStreamMeta: document.querySelector("#eventStreamMeta"),
   eventStreamList: document.querySelector("#eventStreamList"),
   dataMode: document.querySelector("#dataMode"),
@@ -175,6 +212,7 @@ let latestImuRenderOptions = {};
 let latestMotorSnapshot = null;
 let latestMotorRenderOptions = {};
 const imuHistory = [];
+const motorHistory = [];
 const eventStreamKeys = new Set();
 const websocketState = {
   socket: null,
@@ -182,6 +220,11 @@ const websocketState = {
   connected: false,
   lastMessageAt: null,
 };
+const transportState = {
+  backendConnected: false,
+  streamConnected: false,
+};
+let motorControlsBusy = false;
 
 setupWmsTaskControls();
 setupMotorCommandControls();
@@ -191,7 +234,7 @@ appendEventStreamEntry({
   key: "dashboard-start",
   status: "info",
   title: "Dashboard frontend loaded",
-  detail: "Waiting for HTTP polling and /ws/status.",
+  detail: "Waiting for dashboard data",
 });
 init();
 loadWmsTasks();
@@ -322,7 +365,7 @@ function syncSection(key, result, renderFn, metaNode, label) {
     key: `${key}-unavailable-${errorMessage}`,
     status: "error",
     title: `${label} disconnected`,
-    detail: errorMessage,
+    detail: summarizeErrorForDisplay(errorMessage),
   });
   return `${label}: ${errorMessage}`;
 }
@@ -372,6 +415,7 @@ function updateImuSnapshot(snapshot, options = {}) {
 function updateMotorSnapshot(snapshot, options = {}) {
   latestMotorSnapshot = snapshot;
   latestMotorRenderOptions = options;
+  recordMotorHistorySample(snapshot);
   renderMotorStatus(snapshot, options);
 }
 
@@ -480,7 +524,7 @@ function renderImuStatus(snapshot, options = {}) {
   }
 
   const view = buildImuViewModel(snapshot);
-  const metaSegments = [`source: ${view.source}`, `ros: ${view.rosTopic}`, `mqtt: ${view.mqttTopic}`, `freshness: ${view.linkLabel}`];
+  const metaSegments = [`IMU ${view.linkLabel}`, `ROS ${view.rosTopic}`, `MQTT ${view.mqttTopic}`];
 
   if (options.sourceMode === "http-cache") {
     metaSegments.push("cached HTTP snapshot");
@@ -488,10 +532,6 @@ function renderImuStatus(snapshot, options = {}) {
     metaSegments.push("status stream");
   } else if (options.sourceMode === "http") {
     metaSegments.push("HTTP polling");
-  }
-
-  if (options.errorMessage) {
-    metaSegments.push(`error: ${truncateText(options.errorMessage, 96)}`);
   }
 
   rootNodes.imuMeta.textContent = metaSegments.join(" · ");
@@ -515,7 +555,10 @@ function renderImuStatus(snapshot, options = {}) {
   setText(rootNodes.imuGyroValue, formatVectorTriplet(view.gyro));
   setText(rootNodes.imuTemperatureValue, formatSensorValue(view.temperature, " C"));
   setText(rootNodes.imuStateValue, view.state);
-  setText(rootNodes.imuErrorNote, options.errorMessage ? truncateText(options.errorMessage, 160) : "");
+  setText(rootNodes.imuErrorNote, options.errorMessage ? "Telemetry unavailable; see Event Log" : "");
+  if (rootNodes.imuEmptyHint) {
+    rootNodes.imuEmptyHint.classList.toggle("visible", !view.hasPayload);
+  }
 
   if (rootNodes.imuAttitudeCube) {
     const roll = view.attitude.roll.value || 0;
@@ -527,6 +570,9 @@ function renderImuStatus(snapshot, options = {}) {
   window.requestAnimationFrame(() => {
     renderImuTrendCanvas();
   });
+
+  refreshLinkBoard();
+  refreshRobotInfo();
 }
 
 function renderMotorStatus(snapshot, options = {}) {
@@ -540,7 +586,7 @@ function renderMotorStatus(snapshot, options = {}) {
   }
 
   const view = buildMotorViewModel(snapshot);
-  const metaSegments = [`mqtt: ${view.mqttTopic}`, `freshness: ${view.linkLabel}`];
+  const metaSegments = [`Motor ${view.linkLabel}`, `MQTT ${view.mqttTopic}`];
 
   if (options.sourceMode === "http-cache") {
     metaSegments.push("cached HTTP snapshot");
@@ -548,10 +594,6 @@ function renderMotorStatus(snapshot, options = {}) {
     metaSegments.push("status stream");
   } else if (options.sourceMode === "http") {
     metaSegments.push("HTTP polling");
-  }
-
-  if (options.errorMessage) {
-    metaSegments.push(`error: ${truncateText(options.errorMessage, 96)}`);
   }
 
   rootNodes.motorMeta.textContent = metaSegments.join(" · ");
@@ -562,6 +604,7 @@ function renderMotorStatus(snapshot, options = {}) {
   setText(rootNodes.motorSource, `source: ${view.source}`);
   setText(rootNodes.motorMqttTopic, view.mqttTopic);
   setText(rootNodes.motorLastMessageAt, view.lastMessageAt);
+  setText(rootNodes.motorTrendSampleCount, `${motorHistory.length}/${MOTOR_HISTORY_LIMIT} samples`);
   setText(rootNodes.motorTargetWheelSpeed, view.targetWheelSpeed);
   setText(rootNodes.motorActualWheelSpeed, view.actualWheelSpeed);
   setText(rootNodes.motorMeasuredRpm, view.measuredRpm);
@@ -587,6 +630,14 @@ function renderMotorStatus(snapshot, options = {}) {
   setText(rootNodes.motorEncoderCount, view.encoderCount);
   setText(rootNodes.motorInvalidTransitions, view.invalidTransitions);
   setText(rootNodes.motorStateValue, view.state);
+
+  window.requestAnimationFrame(() => {
+    renderMotorTrendCanvas();
+  });
+
+  refreshLinkBoard();
+  refreshRobotInfo();
+  refreshMotorControlAvailability();
 }
 
 function buildMotorViewModel(snapshot) {
@@ -1160,6 +1211,78 @@ function recordImuHistorySample(snapshot) {
   }
 }
 
+function recordMotorHistorySample(snapshot) {
+  const payload = snapshot?.payload;
+  if (!isObjectRecord(payload)) {
+    return;
+  }
+
+  const motorState = extractMotorStatePayload(payload);
+  const timestamp =
+    snapshot?.last_seen ||
+    payload.last_update_time ||
+    pickTimestampFromPayload(payload) ||
+    snapshot?.generated_at;
+  if (!timestamp) {
+    return;
+  }
+
+  const latest = motorHistory[motorHistory.length - 1];
+  if (latest?.key === timestamp) {
+    return;
+  }
+
+  const targetRpm = toFiniteNumber(
+    pickFirstValue(motorState, ["target_rpm", "targetRpm"]) ??
+      pickFirstValue(payload, ["target_rpm", "targetRpm"])
+  );
+  const actualRpm = toFiniteNumber(
+    pickFirstValue(payload, ["measured_rpm", "actual_rpm", "actualRpm"]) ??
+      pickFirstValue(motorState, ["measured_rpm", "actual_rpm", "actualRpm"])
+  );
+  const errorRpm =
+    toFiniteNumber(
+      pickFirstValue(motorState, ["error_rpm", "errorRpm"]) ??
+        pickFirstValue(payload, ["error_rpm", "errorRpm"])
+    ) ?? (targetRpm !== undefined && actualRpm !== undefined ? targetRpm - actualRpm : undefined);
+  const pwm = toFiniteNumber(
+    pickFirstValue(payload, ["pwm", "pwm_duty", "pwmDuty"]) ??
+      pickFirstValue(motorState, ["pwm", "pwm_duty", "pwmDuty"])
+  );
+  const maxPwm = toFiniteNumber(
+    pickFirstValue(payload, ["max_pwm", "maxPwm"]) ??
+      pickFirstValue(motorState, ["max_pwm", "maxPwm"])
+  );
+
+  if ([targetRpm, actualRpm, errorRpm, pwm].every((value) => value === undefined)) {
+    return;
+  }
+
+  motorHistory.push({
+    key: timestamp,
+    timestamp,
+    targetRpm,
+    actualRpm,
+    errorRpm,
+    pwm,
+    maxPwm,
+    status: pickFirstString(payload, ["status"]) || pickFirstString(motorState, ["status"]),
+    enabled:
+      pickFirstValue(payload, ["enabled", "control_enabled", "controlEnabled"]) ??
+      pickFirstValue(motorState, ["enabled", "control_enabled", "controlEnabled"]),
+    closedLoop:
+      pickFirstValue(payload, ["closed_loop", "closedLoop"]) ??
+      pickFirstValue(motorState, ["closed_loop", "closedLoop"]),
+    fault:
+      pickFirstValue(payload, ["fault", "fault_active", "faultActive"]) ??
+      pickFirstValue(motorState, ["fault", "fault_active", "faultActive"]),
+  });
+
+  if (motorHistory.length > MOTOR_HISTORY_LIMIT) {
+    motorHistory.shift();
+  }
+}
+
 function buildImuInfoTile(label, value) {
   return `
     <div class="imu-info-tile">
@@ -1216,6 +1339,112 @@ function renderImuTrendCanvas() {
   for (const item of series) {
     drawTrendLine(context, item.key, item.color, width, height);
   }
+}
+
+function renderMotorTrendCanvas() {
+  const canvas = document.querySelector("#motorTrendCanvas");
+  if (!canvas) {
+    return;
+  }
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#fff9f1";
+  context.fillRect(0, 0, width, height);
+  drawMotorTrendGrid(context, width, height);
+
+  if (rootNodes.motorTrendPlaceholder) {
+    rootNodes.motorTrendPlaceholder.classList.toggle("visible", motorHistory.length < 2);
+  }
+
+  if (motorHistory.length < 2) {
+    context.fillStyle = "rgba(31, 36, 33, 0.2)";
+    context.font = "16px sans-serif";
+    context.textAlign = "center";
+    context.fillText("等待电机数据", width / 2, height / 2);
+    return;
+  }
+
+  const series = [
+    { key: "targetRpm", color: "#205c4f", mode: "rpm" },
+    { key: "actualRpm", color: "#32485f", mode: "rpm" },
+    { key: "pwm", color: "#b87519", mode: "pwm" },
+    { key: "errorRpm", color: "#b23a48", mode: "error" },
+  ];
+
+  for (const item of series) {
+    drawMotorTrendLine(context, item, width, height);
+  }
+}
+
+function drawMotorTrendGrid(context, width, height) {
+  context.strokeStyle = "rgba(31, 36, 33, 0.12)";
+  context.lineWidth = 1;
+
+  for (const y of [height * 0.25, height * 0.5, height * 0.75]) {
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
+  }
+
+  context.strokeStyle = "rgba(31, 36, 33, 0.2)";
+  context.beginPath();
+  context.moveTo(0, height / 2);
+  context.lineTo(width, height / 2);
+  context.stroke();
+}
+
+function drawMotorTrendLine(context, series, width, height) {
+  const values = motorHistory.map((sample) => normalizeMotorTrendValue(sample, series)).filter((value) => value !== undefined);
+  if (values.length < 2) {
+    return;
+  }
+
+  const xStep = width / Math.max(1, MOTOR_HISTORY_LIMIT - 1);
+  context.strokeStyle = series.color;
+  context.lineWidth = 2;
+  context.beginPath();
+
+  let hasPoint = false;
+  motorHistory.forEach((sample, index) => {
+    const normalized = normalizeMotorTrendValue(sample, series);
+    if (normalized === undefined) {
+      return;
+    }
+
+    const x = index * xStep;
+    const y = height - normalized * height;
+    if (!hasPoint) {
+      context.moveTo(x, y);
+      hasPoint = true;
+    } else {
+      context.lineTo(x, y);
+    }
+  });
+  context.stroke();
+}
+
+function normalizeMotorTrendValue(sample, series) {
+  const value = toFiniteNumber(sample[series.key]);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (series.mode === "pwm") {
+    const maxPwm = Math.abs(toFiniteNumber(sample.maxPwm) || 1);
+    return Math.max(0, Math.min(1, value / maxPwm));
+  }
+
+  const range = MOTOR_BENCH_MAX_RPM;
+  const clamped = Math.max(-range, Math.min(range, value));
+  return (clamped + range) / (range * 2);
 }
 
 function drawTrendLine(context, key, color, width, height) {
@@ -1423,6 +1652,7 @@ async function handleMotorCommandSubmit(event) {
   event.preventDefault();
 
   const payload = readMotorCommandFormPayload();
+  motorControlsBusy = true;
   setMotorControlsDisabled(true);
   renderMotorCommandMessage(
     `Publishing wheel speed cmd: ${payload.target_speed_mps.toFixed(2)} m/s -> ${payload.target_rpm.toFixed(1)} rpm, timeout ${payload.timeout_ms} ms`
@@ -1442,20 +1672,22 @@ async function handleMotorCommandSubmit(event) {
       timestamp: response?.published_at,
     });
   } catch (error) {
-    renderMotorCommandMessage(`Motor cmd failed: ${normalizeError(error)}`, true);
+    renderMotorCommandMessage("命令发送失败，详情见日志", true);
     appendEventStreamEntry({
       key: `motor-cmd-error-${Date.now()}`,
       status: "error",
       title: "Motor command failed",
-      detail: normalizeError(error),
+      detail: summarizeErrorForDisplay(normalizeError(error)),
     });
   } finally {
-    setMotorControlsDisabled(false);
+    motorControlsBusy = false;
+    refreshMotorControlAvailability();
   }
 }
 
 async function handleMotorStopClick() {
   const payload = readMotorCommandFormPayload({ stop: true });
+  motorControlsBusy = true;
   setMotorControlsDisabled(true);
   renderMotorCommandMessage("Publishing stop command...");
 
@@ -1480,9 +1712,16 @@ async function handleMotorStopClick() {
       timestamp: response?.published_at,
     });
   } catch (error) {
-    renderMotorCommandMessage(`Stop command failed: ${normalizeError(error)}`, true);
+    renderMotorCommandMessage("STOP 发送失败，详情见日志", true);
+    appendEventStreamEntry({
+      key: `motor-stop-error-${Date.now()}`,
+      status: "error",
+      title: "Motor STOP failed",
+      detail: summarizeErrorForDisplay(normalizeError(error)),
+    });
   } finally {
-    setMotorControlsDisabled(false);
+    motorControlsBusy = false;
+    refreshMotorControlAvailability();
   }
 }
 
@@ -1558,7 +1797,7 @@ function renderMotorCommandMessage(message, isError = false) {
     return;
   }
 
-  rootNodes.motorCommandMessage.textContent = message;
+  rootNodes.motorCommandMessage.textContent = isError ? truncateText(message, 42) : truncateText(message, 54);
   rootNodes.motorCommandMessage.dataset.state = isError ? "error" : "ok";
 }
 
@@ -1580,7 +1819,13 @@ async function handleWmsTaskSubmit(event) {
     renderWmsTaskMessage(`Task created: ${taskId}`);
     await loadWmsTasks();
   } catch (error) {
-    renderWmsTaskMessage(`Task create failed: ${normalizeError(error)}`, true);
+    renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
+    appendEventStreamEntry({
+      key: `wms-create-error-${Date.now()}`,
+      status: "error",
+      title: "Task dispatch failed",
+      detail: summarizeErrorForDisplay(normalizeError(error)),
+    });
   } finally {
     setWmsControlsDisabled(false);
   }
@@ -1602,11 +1847,17 @@ async function loadWmsTasks() {
     const errorMessage = normalizeError(error);
     if (cachedPayloads.wmsTasks) {
       renderWmsTasks(cachedPayloads.wmsTasks, { stale: true, errorMessage });
-      renderWmsTaskMessage(`WMS task list stale: ${errorMessage}`, true);
+      renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
     } else {
-      rootNodes.wmsTasksTable.innerHTML = buildErrorState(`WMS 任务数据不可用：${errorMessage}`);
-      renderWmsTaskMessage(`WMS task list unavailable: ${errorMessage}`, true);
+      rootNodes.wmsTasksTable.innerHTML = "";
+      renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
     }
+    appendEventStreamEntry({
+      key: `wms-list-error-${Date.now()}`,
+      status: "error",
+      title: "WMS task list unavailable",
+      detail: summarizeErrorForDisplay(errorMessage),
+    });
   } finally {
     setWmsRefreshDisabled(false);
   }
@@ -1655,7 +1906,7 @@ function renderWmsTasks(payload, options = {}) {
   `;
 
   if (options.stale) {
-    renderWmsTaskMessage(`WMS task list stale: ${truncateText(options.errorMessage || "-", 140)}`, true);
+    renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
   }
 }
 
@@ -1734,7 +1985,7 @@ function renderWmsTaskMessage(message, isError = false) {
     return;
   }
 
-  rootNodes.wmsTaskMessage.textContent = message;
+  rootNodes.wmsTaskMessage.textContent = isError ? "任务列表不可用，使用本地演示选项" : truncateText(message, 48);
   rootNodes.wmsTaskMessage.dataset.state = isError ? "error" : "ok";
 }
 
@@ -1849,7 +2100,14 @@ function handleStatusMessage(payload) {
   }
 
   if (robot.status === "disconnected") {
-    renderWebSocketStatus(false, `Status stream reports disconnected: ${truncateText(robot.error || "-", 140)}`);
+    renderWebSocketStatus(false, "Status stream reports disconnected.");
+    appendEventStreamEntry({
+      key: `ws-robot-disconnected-${websocketState.lastMessageAt}`,
+      status: "error",
+      title: "Backend disconnected",
+      detail: summarizeErrorForDisplay(robot.error || "Status stream disconnected"),
+      timestamp: websocketState.lastMessageAt,
+    });
   } else {
     renderWebSocketStatus(true, `Latest status stream update: ${formatDate(websocketState.lastMessageAt)}`);
   }
@@ -1865,36 +2123,57 @@ function renderSummary(tasksPayload, devicesPayload, alertsPayload, failures = [
   ).length;
   const blockedTasks = tasks.filter((task) => task.status === "blocked").length;
   const onlineDevices = devices.filter((device) => device.comm_status === "online").length;
+  const criticalDevices = devices.filter((device) => device.health_status === "critical").length;
   const openAlerts = alerts.filter((alert) => alert.status === "open").length;
+  const criticalAlerts = alerts.filter((alert) => alert.level === "critical" && alert.status === "open").length;
+  const currentTask = tasks.find((task) => ["dispatching", "running", "blocked"].includes(task.status)) || tasks[0] || null;
 
   ensureSummaryCards();
-  updateSummaryCard("activeTasks", runningTasks, `${tasks.length} total tasks in dashboard feed`);
-  updateSummaryCard("blockedTasks", blockedTasks, "需要优先排查的 AMR 任务");
-  updateSummaryCard("onlineDevices", onlineDevices, `${devices.length} device status snapshots`);
-  updateSummaryCard("openAlerts", openAlerts, `${alerts.length} total alerts in current view`);
+  updateSummaryCard(
+    "activeTasks",
+    runningTasks,
+    currentTask ? `当前：${currentTask.task_id || "-"} · ${taskStatusLabel[currentTask.status] || currentTask.status || "-"}` : "当前没有活动任务",
+    runningTasks > 0 ? "online" : "stale"
+  );
+  updateSummaryCard(
+    "blockedTasks",
+    blockedTasks,
+    blockedTasks > 0 ? "需要优先排查的 AMR 任务" : "没有阻塞任务",
+    blockedTasks > 0 ? "critical" : "online"
+  );
+  updateSummaryCard(
+    "onlineDevices",
+    onlineDevices,
+    `${devices.length} 个设备快照 · critical ${criticalDevices}`,
+    criticalDevices > 0 ? "critical" : onlineDevices > 0 ? "online" : "offline"
+  );
+  updateSummaryCard(
+    "openAlerts",
+    openAlerts,
+    criticalAlerts > 0 ? `${criticalAlerts} 个 critical 告警未关闭` : `${alerts.length} 条告警记录`,
+    criticalAlerts > 0 ? "critical" : openAlerts > 0 ? "stale" : "online"
+  );
 
-  const generatedSegments = [
-    `Tasks: ${formatDate(tasksPayload.generated_at)}`,
-    `Devices: ${formatDate(devicesPayload.generated_at)}`,
-    `Alerts: ${formatDate(alertsPayload.generated_at)}`,
-  ];
-
-  if (failures.length) {
-    generatedSegments.push(`Refresh warning: ${truncateText(failures.join(" | "), 140)}`);
-  }
-
-  rootNodes.generatedAt.textContent = generatedSegments.join("  |  ");
+  const syncTime = formatClockTime(
+    pickLatestTimestamp([tasksPayload?.generated_at, devicesPayload?.generated_at, alertsPayload?.generated_at])
+  );
+  rootNodes.generatedAt.textContent = failures.length
+    ? `SYNC ${syncTime} · DEGRADED`
+    : `SYNC ${syncTime} · TASKS ${runningTasks} · ALERTS ${openAlerts}`;
 }
 
 function renderSummaryUnavailable(failures) {
-  rootNodes.generatedAt.textContent = failures.length
-    ? `Dashboard backend unavailable: ${truncateText(failures.join(" | "), 180)}`
-    : "正在等待 Dashboard backend 返回数据...";
+  rootNodes.generatedAt.textContent = failures.length ? "SYNC --:--:-- · DISCONNECTED" : "SYNC --:--:-- · WAITING";
   ensureSummaryCards();
-  updateSummaryCard("activeTasks", "--", "waiting for dashboard backend");
-  updateSummaryCard("blockedTasks", "--", "waiting for dashboard backend");
-  updateSummaryCard("onlineDevices", "--", "waiting for dashboard backend");
-  updateSummaryCard("openAlerts", "--", failures.length ? truncateText(failures.join(" | "), 120) : "waiting for dashboard backend");
+  updateSummaryCard("activeTasks", "--", "waiting for dashboard backend", "offline");
+  updateSummaryCard("blockedTasks", "--", "waiting for dashboard backend", "offline");
+  updateSummaryCard("onlineDevices", "--", "waiting for dashboard backend", "offline");
+  updateSummaryCard(
+    "openAlerts",
+    "--",
+    failures.length ? truncateText(failures.join(" | "), 120) : "waiting for dashboard backend",
+    "offline"
+  );
 }
 
 function ensureSummaryCards() {
@@ -1903,16 +2182,16 @@ function ensureSummaryCards() {
   }
 
   const cards = [
-    ["activeTasks", "Active Tasks"],
-    ["blockedTasks", "Blocked Tasks"],
-    ["onlineDevices", "Online Devices"],
+    ["activeTasks", "Task Flow"],
+    ["blockedTasks", "Blocked"],
+    ["onlineDevices", "Device Link"],
     ["openAlerts", "Open Alerts"],
   ];
 
   rootNodes.summaryGrid.innerHTML = cards
     .map(
       ([key, label]) => `
-        <article class="summary-card" data-summary-card="${key}">
+        <article class="summary-card" data-summary-card="${key}" data-state="offline">
           <span class="section-kicker">${label}</span>
           <strong data-summary-value="${key}" class="numeric-fixed">--</strong>
           <p data-summary-note="${key}">waiting for dashboard backend</p>
@@ -1923,7 +2202,11 @@ function ensureSummaryCards() {
   rootNodes.summaryGrid.dataset.ready = "true";
 }
 
-function updateSummaryCard(key, value, note) {
+function updateSummaryCard(key, value, note, state = "stale") {
+  const card = document.querySelector(`[data-summary-card="${key}"]`);
+  if (card) {
+    card.dataset.state = state;
+  }
   setText(document.querySelector(`[data-summary-value="${key}"]`), String(value));
   setText(document.querySelector(`[data-summary-note="${key}"]`), note);
 }
@@ -1931,7 +2214,7 @@ function updateSummaryCard(key, value, note) {
 function renderTasks(tasksPayload, options = {}) {
   const tasks = Array.isArray(tasksPayload?.data) ? tasksPayload.data : [];
   if (rootNodes.tasksMeta) {
-    rootNodes.tasksMeta.textContent = buildSectionMeta(tasks.length, tasksPayload?.source, options);
+    rootNodes.tasksMeta.textContent = `${tasks.length} tasks · ${options.realtime ? "stream" : "http"}`;
     rootNodes.tasksMeta.dataset.state = options.errorMessage ? "error" : "ok";
   }
 
@@ -1942,19 +2225,32 @@ function renderTasks(tasksPayload, options = {}) {
   const completedTasks = tasks.filter((task) => task.status === "completed");
   const currentTask = activeTasks[0] || tasks[0] || null;
   const progress = clampPercent(toFiniteNumber(currentTask?.progress) || 0);
+  const taskStage = currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-";
+  const taskStep = currentTask
+    ? currentTask.blocked_reason || currentTask.last_event || currentTask.source_status || currentTask.task_type || "-"
+    : "-";
 
   setText(rootNodes.taskActiveCount, formatCount(activeTasks.length));
   setText(rootNodes.taskBlockedCount, formatCount(blockedTasks.length));
   setText(rootNodes.taskCompletedCount, formatCount(completedTasks.length));
   setText(rootNodes.taskTotalCount, formatCount(tasks.length));
   setText(rootNodes.taskCurrentId, currentTask?.task_id || "-");
-  setText(rootNodes.taskCurrentStatus, currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-");
+  setText(rootNodes.taskCurrentStatus, taskStage);
   setText(
     rootNodes.taskCurrentRoute,
     currentTask ? `${currentTask.pickup_station || "-"} -> ${currentTask.dropoff_station || "-"}` : "-"
   );
-  setText(rootNodes.taskProgressValue, currentTask ? `${String(Math.round(progress)).padStart(3, "0")}%` : "--%");
+  setText(rootNodes.taskCurrentRobot, currentTask?.robot_id || "-");
+  setText(rootNodes.taskCurrentSource, currentTask?.source_status || currentTask?.task_type || "-");
+  setText(rootNodes.taskCurrentBlockReason, currentTask?.blocked_reason || "-");
+  setText(rootNodes.taskStageValue, taskStage);
+  setText(rootNodes.taskStepValue, taskStep);
+  setText(rootNodes.taskProgressValue, currentTask ? `${Math.round(progress)}%` : "--%");
   setWidthPercent(rootNodes.taskProgressFill, progress);
+  setText(rootNodes.taskCardProgress, currentTask ? `${Math.round(progress)}%` : "--%");
+  setWidthPercent(rootNodes.taskCardProgressFill, progress);
+
+  refreshRobotInfo();
 }
 
 function renderDevices(devicesPayload, options = {}) {
@@ -1967,11 +2263,11 @@ function renderDevices(devicesPayload, options = {}) {
   const lastUpdate = pickLatestTimestamp(devices.map((device) => device.last_seen_at)) || devicesPayload?.generated_at;
 
   if (rootNodes.systemMeta) {
-    rootNodes.systemMeta.textContent = buildSectionMeta(devices.length, devicesPayload?.source, options);
+    rootNodes.systemMeta.textContent = `${devices.length} devices · ${options.realtime ? "stream" : "http"}`;
     rootNodes.systemMeta.dataset.state = options.errorMessage || worstStatus === "critical" ? "error" : "ok";
   }
 
-  setText(rootNodes.systemStatusLabel, label);
+  setText(rootNodes.systemStatusLabel, devices.length ? label : "Waiting");
   setStateClass(rootNodes.systemStatusDot, "status-dot", statusToDotState(worstStatus));
   setText(rootNodes.systemSource, `source: ${devicesPayload?.source || "-"}`);
   setText(rootNodes.systemTotalDevices, formatCount(devices.length));
@@ -1979,12 +2275,15 @@ function renderDevices(devicesPayload, options = {}) {
   setText(rootNodes.systemWarningDevices, formatCount(warningDevices));
   setText(rootNodes.systemCriticalDevices, formatCount(criticalDevices));
   setText(rootNodes.systemLastUpdate, lastUpdate ? `${formatElapsedFixed(parseDateTime(lastUpdate))} ago` : "--.-s ago");
+
+  refreshLinkBoard();
+  refreshRobotInfo();
 }
 
 function renderAlerts(alertsPayload, options = {}) {
   const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
   if (rootNodes.eventStreamMeta) {
-    rootNodes.eventStreamMeta.textContent = `${alerts.length} alerts · latest 10 status events`;
+    rootNodes.eventStreamMeta.textContent = `${alerts.length} alerts · latest 5 status events`;
     rootNodes.eventStreamMeta.dataset.state = options.errorMessage ? "error" : "ok";
   }
 
@@ -1993,7 +2292,7 @@ function renderAlerts(alertsPayload, options = {}) {
       key: `alert-${alert.id || alert.title || alert.updated_at || alert.triggered_at}`,
       status: alert.level === "critical" ? "error" : alert.level === "warning" ? "stale" : "info",
       title: alert.title || "Alert",
-      detail: alert.description || alert.suggested_action || "-",
+      detail: summarizeErrorForDisplay(alert.description || alert.suggested_action || "-"),
       timestamp: alert.updated_at || alert.triggered_at,
     });
   });
@@ -2003,22 +2302,25 @@ function renderAlerts(alertsPayload, options = {}) {
       key: `alerts-unavailable-${options.errorMessage || "unknown"}`,
       status: "error",
       title: "Alerts unavailable",
-      detail: options.errorMessage || "Dashboard backend unavailable.",
+      detail: summarizeErrorForDisplay(options.errorMessage || "Dashboard backend unavailable."),
     });
   }
 }
 
 function renderConnectionStatus(isOnline, message) {
+  transportState.backendConnected = Boolean(isOnline);
+
   if (rootNodes.dataMode) {
-    rootNodes.dataMode.textContent = isOnline
-      ? "Live HTTP + MQTT / Mock WMS"
-      : "Disconnected";
+    rootNodes.dataMode.textContent = isOnline ? "Connected" : "Disconnected";
     rootNodes.dataMode.dataset.state = isOnline ? "online" : "offline";
   }
 
   if (rootNodes.connectionMessage) {
     rootNodes.connectionMessage.textContent = message;
   }
+
+  refreshLinkBoard();
+  refreshMotorControlAvailability();
 }
 
 function setText(node, value) {
@@ -2069,10 +2371,10 @@ function appendEventStreamEntry(entry) {
   body.className = "event-stream-body";
 
   const title = document.createElement("strong");
-  title.textContent = entry.title || "Status update";
+  title.textContent = truncateText(entry.title || "Status update", 48);
 
   const detail = document.createElement("p");
-  detail.textContent = entry.detail || "-";
+  detail.textContent = summarizeErrorForDisplay(entry.detail || "-");
 
   const time = document.createElement("span");
   time.className = "mono stable-date";
@@ -2082,7 +2384,7 @@ function appendEventStreamEntry(entry) {
   item.append(dot, body);
   rootNodes.eventStreamList.prepend(item);
 
-  while (rootNodes.eventStreamList.children.length > 10) {
+  while (rootNodes.eventStreamList.children.length > 5) {
     const removed = rootNodes.eventStreamList.lastElementChild;
     if (!removed) {
       break;
@@ -2133,14 +2435,12 @@ function buildSectionMeta(count, source, options = {}) {
     segments.push("stale snapshot");
   }
 
-  if (options.errorMessage) {
-    segments.push(`refresh error: ${truncateText(options.errorMessage, 96)}`);
-  }
-
   return segments.join(" · ");
 }
 
 function renderWebSocketStatus(isOnline, message) {
+  transportState.streamConnected = Boolean(isOnline);
+
   if (rootNodes.wsStatus) {
     rootNodes.wsStatus.textContent = isOnline ? "Connected" : "Disconnected";
     rootNodes.wsStatus.dataset.state = isOnline ? "online" : "offline";
@@ -2149,6 +2449,190 @@ function renderWebSocketStatus(isOnline, message) {
   if (rootNodes.wsMessage) {
     rootNodes.wsMessage.textContent = message;
   }
+
+  refreshLinkBoard();
+  refreshMotorControlAvailability();
+}
+
+function refreshLinkBoard() {
+  const devices = Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : [];
+  const mqttConnection = String(cachedPayloads.robotStatus?.connection?.status || "").toLowerCase();
+  const imuView = buildImuViewModel(latestImuSnapshot);
+  const motorView = buildMotorViewModel(latestMotorSnapshot);
+  const microRosSummary = summarizeDeviceGroup(devices, (device) =>
+    String(device?.transport || "").toLowerCase() === "micro_ros" ||
+    String(device?.transport || "").toLowerCase() === "microros"
+  );
+  const batterySummary = summarizeDeviceGroup(
+    devices,
+    (device) =>
+      String(device?.subsystem || "").toLowerCase().includes("battery") ||
+      String(device?.device_type || "").toLowerCase() === "bms"
+  );
+
+  setHealthNode(rootNodes.linkBackendStatus, transportState.backendConnected ? "Online" : "Offline", transportState.backendConnected ? "online" : "offline");
+  setHealthNode(rootNodes.linkStreamStatus, transportState.streamConnected ? "Online" : "Offline", transportState.streamConnected ? "online" : "offline");
+  setHealthNode(rootNodes.linkImuStatus, imuView.hasPayload ? imuView.linkLabel : "Waiting", statusToDataState(imuView.hasPayload ? imuView.linkStatus : "unknown"));
+  setText(rootNodes.linkImuLatency, imuView.hasPayload ? imuView.lastUpdateAgo : "--");
+  setHealthNode(rootNodes.linkMicroRosStatus, microRosSummary.label, microRosSummary.state);
+  setHealthNode(
+    rootNodes.linkMqttStatus,
+    mqttConnection === "connected" ? "OK" : mqttConnection === "connecting" ? "Connecting" : "Waiting",
+    mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown"
+  );
+  setHealthNode(rootNodes.linkMotorStatus, motorView.hasPayload ? motorView.linkLabel : "Waiting", statusToDataState(motorView.hasPayload ? motorView.linkStatus : "unknown"));
+  setText(rootNodes.linkMotorLatency, motorView.hasPayload ? formatElapsedFixed(parseDateTime(latestMotorSnapshot?.last_seen)) : "--");
+  setHealthNode(rootNodes.linkBatteryStatus, batterySummary.label, batterySummary.state);
+  setHealthNode(rootNodes.headerRosStatus, imuView.hasPayload ? "OK" : "Waiting", imuView.hasPayload ? "online" : "unknown");
+  setHealthNode(rootNodes.headerMicroRosStatus, microRosSummary.label === "Online" ? "OK" : microRosSummary.label, microRosSummary.state);
+  setHealthNode(
+    rootNodes.headerMqttStatus,
+    mqttConnection === "connected" ? "OK" : mqttConnection === "connecting" ? "Connecting" : "Waiting",
+    mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown"
+  );
+  setHealthNode(rootNodes.pipelineEsp32, motorView.hasPayload || imuView.hasPayload ? "ESP32" : "ESP32", motorView.hasPayload || imuView.hasPayload ? "online" : "unknown");
+  setHealthNode(rootNodes.pipelineMicroRos, "micro-ROS", microRosSummary.state === "offline" && !imuView.hasPayload ? "unknown" : microRosSummary.state);
+  setHealthNode(rootNodes.pipelineRos, "ROS 2", imuView.hasPayload ? "online" : "unknown");
+  setHealthNode(rootNodes.pipelineMqtt, "MQTT", mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown");
+  setHealthNode(rootNodes.pipelineBackend, "Backend", transportState.backendConnected ? "online" : "offline");
+  setHealthNode(rootNodes.pipelineFrontend, "Frontend", "online");
+
+  if (rootNodes.previewMode) {
+    const isOnline = transportState.backendConnected || transportState.streamConnected;
+    rootNodes.previewMode.textContent = isOnline ? "Live Monitor" : "Offline Preview";
+    rootNodes.previewMode.dataset.state = isOnline ? "online" : "stale";
+  }
+}
+
+function refreshMotorControlAvailability() {
+  const motorView = buildMotorViewModel(latestMotorSnapshot);
+  const mqttConnection = cachedPayloads.robotStatus?.connection?.status || latestMotorSnapshot?.connection?.status;
+  const backendReachable = Boolean(transportState.backendConnected || transportState.streamConnected || cachedPayloads.robotStatus);
+  const available = Boolean(backendReachable && (!mqttConnection || mqttConnection === "connected"));
+  const disabled = motorControlsBusy || !available;
+  setMotorControlsDisabled(disabled);
+
+  if (rootNodes.cmdCard) {
+    rootNodes.cmdCard.dataset.disabled = disabled ? "true" : "false";
+  }
+  if (rootNodes.safetyStatusValue) {
+    rootNodes.safetyStatusValue.textContent = available ? "Safety: command path ready" : "Safety: waiting for backend / MQTT";
+  }
+  if (!motorControlsBusy) {
+    renderMotorCommandMessage(
+      available
+        ? motorView.hasPayload
+          ? "控制链路已连接，等待显式台架命令"
+          : "命令接口已连接，等待电机状态回传"
+        : "控制链路未连接，等待 backend / MQTT",
+      !available
+    );
+  }
+}
+
+function refreshRobotInfo() {
+  const tasks = Array.isArray(cachedPayloads.tasks?.data) ? cachedPayloads.tasks.data : [];
+  const devices = Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : [];
+  const currentTask = tasks.find((task) => ["queued", "dispatching", "running", "blocked"].includes(task.status)) || tasks[0] || null;
+  const robotStatePayload =
+    cachedPayloads.robotStatus?.robot?.state ||
+    cachedPayloads.robotStatus?.topics?.["robot/state"]?.payload ||
+    null;
+  const robotId =
+    currentTask?.robot_id ||
+    pickFirstString(latestImuSnapshot?.payload, ["robot_id", "robot"]) ||
+    pickFirstString(latestMotorSnapshot?.payload, ["robot_id", "robot"]) ||
+    pickFirstString(robotStatePayload, ["robot_id", "robot"]) ||
+    devices.find((device) => device?.robot_id)?.robot_id ||
+    "-";
+  const firmware =
+    pickFirstString(robotStatePayload, ["firmware_version", "firmware"]) ||
+    pickFirstString(latestImuSnapshot?.payload, ["firmware_version", "firmware"]) ||
+    pickFirstString(latestMotorSnapshot?.payload, ["firmware_version", "firmware"]) ||
+    devices.find((device) => device?.robot_id === robotId && device?.firmware_version)?.firmware_version ||
+    devices.find((device) => device?.firmware_version)?.firmware_version ||
+    "-";
+  const runtime =
+    formatRuntimeValue(
+      pickFirstValue(robotStatePayload, ["runtime_s", "runtime_sec", "runtime_seconds", "uptime_s", "uptime_sec", "uptime_seconds", "runtime", "uptime"]) ??
+        pickFirstValue(latestImuSnapshot?.payload, ["runtime_s", "runtime", "uptime_s", "uptime"]) ??
+        pickFirstValue(latestMotorSnapshot?.payload, ["runtime_s", "runtime", "uptime_s", "uptime"])
+    ) || "-";
+  const ipAddress =
+    pickFirstString(robotStatePayload, ["ip", "ip_address", "ipAddress", "host"]) ||
+    pickFirstString(latestImuSnapshot?.payload, ["ip", "ip_address", "ipAddress", "host"]) ||
+    pickFirstString(latestMotorSnapshot?.payload, ["ip", "ip_address", "ipAddress", "host"]) ||
+    "-";
+  const mqttTopic = [latestImuSnapshot?.topic || "robot/imu", latestMotorSnapshot?.topic || "robot/motor/status"].join(" | ");
+
+  setText(rootNodes.robotInfoId, robotId);
+  setText(rootNodes.robotInfoFirmware, firmware);
+  setText(rootNodes.robotInfoRuntime, runtime);
+  setText(rootNodes.robotInfoIp, ipAddress);
+  setText(rootNodes.robotInfoMqttTopic, mqttTopic);
+}
+
+function summarizeDeviceGroup(devices, predicate) {
+  const matches = devices.filter(predicate);
+  if (!matches.length) {
+    return { label: "Waiting", state: "unknown" };
+  }
+
+  const allOffline = matches.every((device) => device?.comm_status === "offline");
+  const hasCritical = matches.some((device) => device?.health_status === "critical");
+  const hasWarning = matches.some(
+    (device) => device?.health_status === "warning" || device?.comm_status === "intermittent"
+  );
+
+  if (allOffline) {
+    return { label: "Offline", state: "offline" };
+  }
+  if (hasCritical) {
+    return { label: "Critical", state: "offline" };
+  }
+  if (hasWarning) {
+    return { label: "Warning", state: "stale" };
+  }
+  return { label: "Online", state: "online" };
+}
+
+function setHealthNode(node, label, state) {
+  if (!node) {
+    return;
+  }
+
+  node.textContent = label;
+  node.dataset.state = state;
+}
+
+function statusToDataState(status) {
+  if (["online", "healthy", "info", "connected", "completed"].includes(status)) {
+    return "online";
+  }
+  if (["stale", "warning", "intermittent", "blocked", "connecting"].includes(status)) {
+    return "stale";
+  }
+  if (["unknown", "waiting", "no-data"].includes(status)) {
+    return "unknown";
+  }
+  return "offline";
+}
+
+function formatRuntimeValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "";
+  }
+
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return String(value);
+  }
+
+  const totalSeconds = Math.max(0, Math.round(numericValue));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function buildWebSocketUrl(baseUrl, path) {
@@ -2355,12 +2839,34 @@ function normalizeError(error) {
   return "Unknown error";
 }
 
-function truncateText(value, maxLength) {
-  if (value.length <= maxLength) {
-    return value;
+function summarizeErrorForDisplay(error) {
+  const message = String(error || "").trim();
+  if (!message) {
+    return "No detail";
   }
 
-  return `${value.slice(0, maxLength - 3)}...`;
+  if (/failed to fetch|networkerror|load failed|connection refused|couldn't connect|disconnected/i.test(message)) {
+    return "Backend disconnected";
+  }
+
+  if (/websocket|status stream/i.test(message)) {
+    return "Status stream disconnected";
+  }
+
+  if (/wms/i.test(message)) {
+    return "WMS task list unavailable";
+  }
+
+  return truncateText(message.replace(/\s+/g, " "), 72);
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value ?? "");
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength - 3)}...`;
 }
 
 function escapeHtml(value) {

@@ -3,257 +3,182 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AMR Operations Dashboard</title>
-    <link rel="stylesheet" href="./styles.css?v=20260520-motor-loop" />
+    <title>Robot Ops Cockpit</title>
+    <link rel="stylesheet" href="./styles.css?v=20260526-no-scroll-fit" />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Robot Operations and Testing Dashboard</p>
-          <h1>AMR Operations Dashboard</h1>
-          <p class="hero-text">
-            通过 Dashboard Backend 读取 AMR Mock WMS HTTP API 与本地 MQTT 状态 topic，将任务和设备状态映射为统一运维视图。
-            当前页面支持 Mock WMS 任务创建，以及通过 backend HTTP API 下发低频电机控制命令。
-          </p>
+    <div id="app" class="cockpit-shell dashboard-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <span class="brand-mark"></span>
+          <div>
+            <p class="eyebrow">Robot Operations Cockpit</p>
+            <h1>AMR 运维驾驶舱</h1>
+          </div>
         </div>
-        <div class="hero-meta">
-          <div class="meta-card">
-            <span class="meta-label">Data Mode</span>
+        <div class="topbar-status">
+          <div class="status-chip">
+            <span>Backend</span>
             <strong id="dataMode" data-state="loading">Connecting...</strong>
-            <p id="connectionMessage" class="meta-note">
-              Waiting for Dashboard backend at http://127.0.0.1:9000
-            </p>
           </div>
-          <div class="meta-card">
-            <span class="meta-label">Status Stream</span>
+          <div class="status-chip">
+            <span>Stream</span>
             <strong id="wsStatus" data-state="loading">Connecting...</strong>
-            <p id="wsMessage" class="meta-note">Waiting for /ws/status</p>
           </div>
-          <div class="meta-card">
-            <span class="meta-label">Current Scope</span>
-            <strong>Monitoring + Motor Control</strong>
+          <div class="status-chip">
+            <span>ROS 2</span>
+            <strong id="headerRosStatus" data-state="loading">Waiting</strong>
           </div>
-          <div class="meta-card">
-            <span class="meta-label">Integration</span>
-            <strong>AMR HTTP + MQTT Status/Cmd</strong>
+          <div class="status-chip">
+            <span>micro-ROS</span>
+            <strong id="headerMicroRosStatus" data-state="loading">Waiting</strong>
+          </div>
+          <div class="status-chip">
+            <span>MQTT</span>
+            <strong id="headerMqttStatus" data-state="loading">Waiting</strong>
           </div>
         </div>
+        <div class="topbar-right">
+          <div class="status-chip mode-chip">
+            <span>Mode</span>
+            <strong id="previewMode" data-state="stale">Offline Preview</strong>
+          </div>
+          <p id="generatedAt" class="topbar-time">正在加载数据...</p>
+        </div>
+        <p id="connectionMessage" class="sr-note">Waiting for Dashboard backend at http://127.0.0.1:9000</p>
+        <p id="wsMessage" class="sr-note">Waiting for /ws/status</p>
       </header>
 
-      <section class="overview panel">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Overview</p>
-            <h2>摘要概览</h2>
-          </div>
-          <p id="generatedAt" class="section-meta">正在加载数据...</p>
-        </div>
-        <div id="summaryGrid" class="summary-grid"></div>
-      </section>
-
-      <section class="panel wms-panel">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Mock WMS</p>
-            <h2>任务创建</h2>
-          </div>
-          <div class="wms-actions">
-            <button id="wmsRefreshButton" class="ghost-button" type="button">刷新</button>
-          </div>
-        </div>
-
-        <form id="wmsTaskForm" class="wms-form">
-          <label>
-            <span>Task Type</span>
-            <input id="wmsTaskType" name="task_type" type="text" value="transport" maxlength="64" />
-          </label>
-          <label>
-            <span>Pickup</span>
-            <select id="wmsPickup" name="pickup">
-              <option value="station_a">station_a</option>
-              <option value="station_b">station_b</option>
-              <option value="dock_a">dock_a</option>
-              <option value="start_zone" selected>start_zone</option>
-            </select>
-          </label>
-          <label>
-            <span>Dropoff</span>
-            <select id="wmsDropoff" name="dropoff">
-              <option value="station_a" selected>station_a</option>
-              <option value="station_b">station_b</option>
-              <option value="dock_a">dock_a</option>
-              <option value="start_zone">start_zone</option>
-            </select>
-          </label>
-          <button id="wmsSubmitButton" class="primary-button" type="submit">创建任务</button>
-        </form>
-
-        <p id="wmsTaskMessage" class="section-meta">等待 WMS 任务数据...</p>
-        <div id="wmsTasksTable" class="table-wrap compact-table"></div>
-      </section>
-
-      <main class="dashboard-grid">
-        <section class="panel dashboard-card system-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">System Health</p>
-              <h2>系统健康</h2>
-            </div>
-            <p id="systemMeta" class="section-meta">waiting for device status</p>
-          </div>
-          <div class="status-card-body">
-            <div class="status-title-row">
+      <main class="cockpit-grid dashboard-main">
+        <aside class="cockpit-column left-column">
+          <section class="cockpit-card robot-card">
+            <div class="card-head">
               <div>
-                <strong id="systemStatusLabel" class="stable-status-label">Unknown</strong>
-                <p id="systemSource" class="subnote mono">source: -</p>
+                <p class="section-kicker">Robot Link</p>
+                <h2>链路状态</h2>
               </div>
               <span id="systemStatusDot" class="status-dot offline"></span>
             </div>
-            <div class="metric-grid fixed-metric-grid">
-              <div class="metric-tile">
-                <span>Total</span>
-                <strong id="systemTotalDevices" class="numeric-fixed">--</strong>
+            <div class="card-body link-card-body">
+              <div class="hero-readout">
+              <strong id="systemStatusLabel" class="status-label">Unknown</strong>
+              <span id="systemLastUpdate" class="mono">--.-s ago</span>
               </div>
-              <div class="metric-tile">
-                <span>Online</span>
-                <strong id="systemOnlineDevices" class="numeric-fixed">--</strong>
+              <div class="link-grid">
+                <div class="link-item"><span>Backend</span><strong id="linkBackendStatus" data-state="loading">Connecting</strong><em>--</em></div>
+                <div class="link-item"><span>Stream</span><strong id="linkStreamStatus" data-state="loading">Connecting</strong><em>--</em></div>
+                <div class="link-item"><span>IMU</span><strong id="linkImuStatus" data-state="offline">Waiting</strong><em id="linkImuLatency">--</em></div>
+                <div class="link-item"><span>micro-ROS</span><strong id="linkMicroRosStatus" data-state="offline">Waiting</strong><em>--</em></div>
+                <div class="link-item"><span>MQTT</span><strong id="linkMqttStatus" data-state="offline">Waiting</strong><em>--</em></div>
+                <div class="link-item"><span>Motor</span><strong id="linkMotorStatus" data-state="offline">Waiting</strong><em id="linkMotorLatency">--</em></div>
+                <div class="link-item"><span>Battery</span><strong id="linkBatteryStatus" data-state="offline">Waiting</strong><em>--</em></div>
               </div>
-              <div class="metric-tile">
-                <span>Warning</span>
-                <strong id="systemWarningDevices" class="numeric-fixed">--</strong>
-              </div>
-              <div class="metric-tile">
-                <span>Critical</span>
-                <strong id="systemCriticalDevices" class="numeric-fixed">--</strong>
+              <div class="metric-grid compact-metrics">
+                <div class="metric-tile">
+                  <span>Total</span>
+                  <strong id="systemTotalDevices">--</strong>
+                </div>
+                <div class="metric-tile">
+                  <span>Online</span>
+                  <strong id="systemOnlineDevices">--</strong>
+                </div>
+                <div class="metric-tile">
+                  <span>Warn</span>
+                  <strong id="systemWarningDevices">--</strong>
+                </div>
+                <div class="metric-tile">
+                  <span>Crit</span>
+                  <strong id="systemCriticalDevices">--</strong>
+                </div>
               </div>
             </div>
-            <div class="stable-row">
-              <span>Last update</span>
-              <strong id="systemLastUpdate" class="mono stable-time">--.-s ago</strong>
+            <p id="systemMeta" class="compact-meta card-footer">waiting for device status</p>
+            <div class="hidden-diagnostics" aria-hidden="true">
+              <div id="imuFreshness" class="imu-freshness offline">
+                <span id="imuStatusDot" class="status-dot offline"></span>
+                <strong id="imuStatusLabel">Offline</strong>
+              </div>
+              <span id="imuLastUpdateAgo" class="mono">--.-s</span>
+              <span id="sensorLedNormal" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Normal</span>
+              <span id="sensorLedWarning" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Warning</span>
+              <span id="sensorLedAlarm" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Alarm</span>
+              <span id="sensorLedCurrent" class="sensor-led-current">Current: No Data</span>
+              <span id="sensorLedLastUpdate" class="mono">--:--:--</span>
+              <span id="imuStateValue" class="mono">offline</span>
+              <span id="imuTemperatureValue" class="mono">-</span>
+              <span id="motorStateValue" class="mono">offline</span>
+              <span id="motorFaultValue" class="mono">-</span>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section class="panel dashboard-card task-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">AMR Task Status</p>
-              <h2>任务状态</h2>
-            </div>
-            <p id="tasksMeta" class="section-meta">waiting for tasks</p>
-          </div>
-          <div class="status-card-body">
-            <div class="metric-grid fixed-metric-grid">
-              <div class="metric-tile">
-                <span>Active</span>
-                <strong id="taskActiveCount" class="numeric-fixed">--</strong>
-              </div>
-              <div class="metric-tile">
-                <span>Blocked</span>
-                <strong id="taskBlockedCount" class="numeric-fixed">--</strong>
-              </div>
-              <div class="metric-tile">
-                <span>Completed</span>
-                <strong id="taskCompletedCount" class="numeric-fixed">--</strong>
-              </div>
-              <div class="metric-tile">
-                <span>Total</span>
-                <strong id="taskTotalCount" class="numeric-fixed">--</strong>
+          <section class="cockpit-card basic-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Robot Info</p>
+                <h2>基础信息</h2>
               </div>
             </div>
-            <div class="task-current">
-              <div class="stable-row">
-                <span>Current task</span>
-                <strong id="taskCurrentId" class="mono text-fixed">-</strong>
+            <div class="kv-list info-scroll card-body">
+              <div>
+                <span>Robot ID</span>
+                <strong id="robotInfoId" class="mono">-</strong>
               </div>
-              <div class="stable-row">
-                <span>Status</span>
-                <strong id="taskCurrentStatus" class="text-fixed">-</strong>
+              <div>
+                <span>Firmware</span>
+                <strong id="robotInfoFirmware" class="mono">-</strong>
               </div>
-              <div class="stable-row">
-                <span>Route</span>
-                <strong id="taskCurrentRoute" class="mono text-fixed">-</strong>
+              <div>
+                <span>Runtime</span>
+                <strong id="robotInfoRuntime" class="mono">-</strong>
               </div>
-              <div class="progress stable-progress">
-                <div class="progress-label-row">
-                  <span>Progress</span>
-                  <strong id="taskProgressValue" class="numeric-fixed">--%</strong>
-                </div>
-                <div class="progress-track">
-                  <div id="taskProgressFill" class="progress-fill" style="width: 0%"></div>
-                </div>
+              <div>
+                <span>IP</span>
+                <strong id="robotInfoIp" class="mono">-</strong>
+              </div>
+              <div>
+                <span>ROS Topic</span>
+                <strong id="imuRosTopic" class="mono">-</strong>
+              </div>
+              <div>
+                <span>MQTT Topic</span>
+                <strong id="robotInfoMqttTopic" class="mono">robot/imu | robot/motor/status</strong>
               </div>
             </div>
-          </div>
-        </section>
+            <div class="basic-card-footer card-footer">
+              <div class="wide-readout">
+                <span>Source</span>
+                <strong id="systemSource" class="mono">source: -</strong>
+              </div>
+              <p id="imuErrorNote" class="error-line"></p>
+            </div>
+            <div class="hidden-diagnostics" aria-hidden="true">
+              <span id="imuSource" class="mono">-</span>
+              <span id="imuMqttTopic">robot/imu</span>
+              <span id="motorMqttTopic">robot/motor/status</span>
+              <span id="imuLastMessageAt">-</span>
+              <span id="motorLastMessageAt">-</span>
+            </div>
+          </section>
+        </aside>
 
-        <section class="panel dashboard-card imu-card-shell">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">MPU6050 / IMU</p>
-              <h2>IMU 状态</h2>
+        <section class="cockpit-column center-column">
+          <section id="imuStatusPanel" class="cockpit-card attitude-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Attitude</p>
+                <h2>IMU 姿态展示</h2>
+              </div>
+              <p id="imuMeta" class="compact-meta"></p>
             </div>
-            <p id="imuMeta" class="section-meta"></p>
-          </div>
-          <div id="imuStatusPanel" class="imu-status-panel">
-            <article class="imu-card imu-card-visual">
-              <div class="imu-status-top">
-                <div>
-                  <h3>IMU Status</h3>
-                  <p class="subnote">Last update: <span id="imuLastUpdateAgo" class="mono stable-time">--.-s</span> ago</p>
-                </div>
-                <div id="imuFreshness" class="imu-freshness offline">
-                  <span id="imuStatusDot" class="status-dot offline"></span>
-                  <strong id="imuStatusLabel">Offline</strong>
-                </div>
-              </div>
-              <div class="sensor-leds-panel" aria-label="Sensor Status LEDs">
-                <div class="sensor-leds-head">
-                  <strong>Sensor Status LEDs</strong>
-                  <span id="sensorLedLastUpdate" class="mono stable-date">Last update: --:--:--</span>
-                </div>
-                <div class="sensor-leds-row">
-                  <span id="sensorLedNormal" class="sensor-led-badge no-data">
-                    <span class="sensor-led-dot"></span>
-                    Normal
-                  </span>
-                  <span id="sensorLedWarning" class="sensor-led-badge no-data">
-                    <span class="sensor-led-dot"></span>
-                    Warning
-                  </span>
-                  <span id="sensorLedAlarm" class="sensor-led-badge no-data">
-                    <span class="sensor-led-dot"></span>
-                    Alarm / Critical
-                  </span>
-                  <span id="sensorLedCurrent" class="sensor-led-current">Current: No Data</span>
-                </div>
-              </div>
-              <div class="imu-source-grid">
-                <div class="imu-info-tile">
-                  <span>source</span>
-                  <strong id="imuSource">-</strong>
-                </div>
-                <div class="imu-info-tile">
-                  <span>ros_topic</span>
-                  <strong id="imuRosTopic">-</strong>
-                </div>
-                <div class="imu-info-tile">
-                  <span>mqtt_topic</span>
-                  <strong id="imuMqttTopic">robot/imu</strong>
-                </div>
-                <div class="imu-info-tile">
-                  <span>last_message_at</span>
-                  <strong id="imuLastMessageAt" class="stable-date">-</strong>
-                </div>
-              </div>
-              <div class="imu-visual-grid">
+            <div class="card-body attitude-card-body">
+              <div class="attitude-layout">
                 <div class="attitude-stage" aria-label="IMU attitude preview">
                   <div id="imuAttitudeCube" class="attitude-cube">
                     <span class="cube-face front">IMU</span>
                     <span class="cube-face top"></span>
                     <span class="cube-face side"></span>
                   </div>
+                  <span id="imuEmptyHint" class="empty-hint">等待 IMU 数据</span>
                 </div>
                 <div class="attitude-panel">
                   <div class="attitude-heading">
@@ -294,219 +219,246 @@
                   </div>
                 </div>
               </div>
-              <div class="imu-trend">
-                <div class="attitude-heading">
-                  <strong>Recent attitude</strong>
-                  <span id="imuTrendSampleCount">0/30 samples</span>
-                </div>
-                <canvas id="imuTrendCanvas" class="imu-trend-canvas" width="520" height="120"></canvas>
+            </div>
+            <div class="imu-metrics card-footer">
+              <div class="imu-metric-row"><span>accel x/y/z</span><strong id="imuAccelValue" class="mono">- / - / -</strong></div>
+              <div class="imu-metric-row"><span>gyro x/y/z</span><strong id="imuGyroValue" class="mono">- / - / -</strong></div>
+            </div>
+          </section>
+
+          <section class="flow-strip-card">
+            <div class="flow-chain" aria-label="Core data flow chain">
+              <span id="pipelineEsp32" data-state="unknown">ESP32</span>
+              <span class="flow-arrow">→</span>
+              <span id="pipelineMicroRos" data-state="unknown">micro-ROS</span>
+              <span class="flow-arrow">→</span>
+              <span id="pipelineRos" data-state="unknown">ROS 2</span>
+              <span class="flow-arrow">→</span>
+              <span id="pipelineMqtt" data-state="unknown">MQTT</span>
+              <span class="flow-arrow">→</span>
+              <span id="pipelineBackend" data-state="unknown">Backend</span>
+              <span class="flow-arrow">→</span>
+              <span id="pipelineFrontend" data-state="online">Frontend</span>
+            </div>
+            <p id="motorMeta" class="compact-meta">waiting for robot/motor/status</p>
+            <div class="hidden-diagnostics" aria-hidden="true">
+              <strong id="motorTargetWheelSpeed" class="mono">--.-- m/s</strong>
+              <strong id="motorActualWheelSpeed" class="mono">--.-- m/s</strong>
+              <strong id="motorTargetRpm" class="mono">----- rpm</strong>
+              <strong id="motorMeasuredRpm" class="mono">----- rpm</strong>
+              <strong id="motorPwmValue" class="mono">-----</strong>
+              <strong id="motorErrorRpm" class="mono">-----</strong>
+              <strong id="motorDirectionValue" class="mono">-</strong>
+              <strong id="motorWheelStatusValue" class="mono">no data</strong>
+              <strong id="motorBenchLimitValue">max 80 rpm</strong>
+              <strong id="motorEnabledValue">-</strong>
+              <strong id="motorClosedLoopValue">-</strong>
+              <strong id="motorCommandSource">-</strong>
+              <strong id="motorMaxPwmValue">-----</strong>
+              <strong id="motorTimeoutMsValue">-----</strong>
+              <strong id="motorSafetyFlags">- / - / -</strong>
+              <strong id="motorLoop">-----</strong>
+            </div>
+          </section>
+
+          <section class="cockpit-card trend-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Motor Trend</p>
+                <h2>速度 / PWM 曲线</h2>
               </div>
-              <div class="imu-metrics">
-                <div class="imu-metric-row">
-                  <span>accel x/y/z</span>
-                  <strong id="imuAccelValue" class="mono text-fixed">- / - / -</strong>
-                </div>
-                <div class="imu-metric-row">
-                  <span>gyro x/y/z</span>
-                  <strong id="imuGyroValue" class="mono text-fixed">- / - / -</strong>
-                </div>
-                <div class="imu-metric-row">
-                  <span>temperature</span>
-                  <strong id="imuTemperatureValue" class="mono text-fixed">-</strong>
-                </div>
-                <div class="imu-metric-row">
-                  <span>state</span>
-                  <strong id="imuStateValue" class="mono text-fixed">offline</strong>
-                </div>
-              </div>
-              <p id="imuErrorNote" class="imu-note error-text stable-note"></p>
-            </article>
-          </div>
+              <span id="motorTrendSampleCount" class="mono">0/60 samples</span>
+            </div>
+            <div class="trend-canvas-wrap card-body">
+              <canvas id="motorTrendCanvas" class="motor-trend-canvas" width="760" height="260"></canvas>
+              <span id="motorTrendPlaceholder" class="empty-hint">等待电机数据</span>
+            </div>
+            <div class="motor-trend-legend card-footer" aria-label="Motor tuning trend legend">
+              <span class="target">target_rpm</span>
+              <span class="actual">actual_rpm</span>
+              <span class="pwm">pwm</span>
+              <span class="error">error_rpm</span>
+            </div>
+            <div class="hidden-diagnostics" aria-hidden="true">
+              <span id="motorStateJsonValue">-</span>
+              <span id="motorBenchEnabled">-</span>
+              <span id="motorSafetyMode">-</span>
+              <span id="motorTargetTicks">-----</span>
+              <span id="motorMeasuredTicks">-----</span>
+              <span id="motorEncoderCount">-----</span>
+              <span id="motorInvalidTransitions">-----</span>
+              <canvas id="imuTrendCanvas" width="520" height="120"></canvas>
+              <span id="imuTrendSampleCount">0/30 samples</span>
+            </div>
+          </section>
         </section>
 
-        <section class="panel dashboard-card motor-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Motor / Encoder</p>
-              <h2>Wheel Speed / 轮端等效速度</h2>
-            </div>
-            <p id="motorMeta" class="section-meta">waiting for robot/motor/status</p>
-          </div>
-          <div class="status-card-body">
-            <div class="status-title-row">
+        <aside class="cockpit-column right-column">
+          <section class="cockpit-card task-card">
+            <div class="card-head">
               <div>
-                <strong id="motorStatusLabel" class="stable-status-label">Offline</strong>
-                <p id="motorSource" class="subnote mono">source: -</p>
+                <p class="section-kicker">Current Task</p>
+                <h2>当前任务</h2>
+              </div>
+            </div>
+            <div class="card-body task-card-body">
+              <div class="hero-readout">
+                <strong id="taskCurrentId" class="status-label mono">暂无任务</strong>
+                <span id="taskCurrentStatus" class="mono">Idle</span>
+              </div>
+              <div class="task-progress-inline">
+                <span id="taskCardProgress">--%</span>
+                <div class="progress-track"><div id="taskCardProgressFill" class="progress-fill" style="width: 0%"></div></div>
+              </div>
+            </div>
+            <div class="info-grid card-footer">
+              <div>
+                <span>Route</span>
+                <strong id="taskCurrentRoute" class="mono">-</strong>
+              </div>
+              <div>
+                <span>Robot</span>
+                <strong id="taskCurrentRobot" class="mono">-</strong>
+              </div>
+              <div>
+                <span>Upstream</span>
+                <strong id="taskCurrentSource" class="mono">-</strong>
+              </div>
+              <div>
+                <span>Blocked</span>
+                <strong id="taskCurrentBlockReason" class="mono">-</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="cockpit-card dispatch-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Task Dispatch</p>
+                <h2>任务下发</h2>
+              </div>
+              <button id="wmsRefreshButton" class="ghost-button compact-button" type="button">刷新</button>
+            </div>
+            <form id="wmsTaskForm" class="wms-form card-body">
+              <label>
+                <span>Task Type</span>
+                <input id="wmsTaskType" name="task_type" type="text" value="transport" maxlength="64" />
+              </label>
+              <label>
+                <span>Pickup</span>
+                <select id="wmsPickup" name="pickup">
+                  <option value="station_a">station_a</option>
+                  <option value="station_b">station_b</option>
+                  <option value="dock_a">dock_a</option>
+                  <option value="start_zone" selected>start_zone</option>
+                </select>
+              </label>
+              <label>
+                <span>Dropoff</span>
+                <select id="wmsDropoff" name="dropoff">
+                  <option value="station_a" selected>station_a</option>
+                  <option value="station_b">station_b</option>
+                  <option value="dock_a">dock_a</option>
+                  <option value="start_zone">start_zone</option>
+                </select>
+              </label>
+              <button id="wmsSubmitButton" class="primary-button" type="submit">DISPATCH</button>
+            </form>
+            <p id="wmsTaskMessage" class="compact-meta card-footer">任务列表不可用，使用本地演示选项</p>
+            <div id="wmsTasksTable" class="table-wrap compact-table"></div>
+          </section>
+
+          <section class="cockpit-card cmd-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">cmd_vel</p>
+                <h2>速度控制</h2>
               </div>
               <span id="motorStatusDot" class="status-dot offline"></span>
             </div>
-            <div class="imu-source-grid">
-              <div class="imu-info-tile">
-                <span>mqtt_topic</span>
-                <strong id="motorMqttTopic">robot/motor/status</strong>
+            <form id="motorCommandForm" class="motor-command-form card-body">
+              <div class="cmd-status-row">
+                <strong id="motorStatusLabel" class="status-label">Waiting</strong>
+                <strong id="motorSource" class="mono">source: --</strong>
               </div>
-              <div class="imu-info-tile">
-                <span>last_message_at</span>
-                <strong id="motorLastMessageAt" class="stable-date">-</strong>
-              </div>
-            </div>
-            <form id="motorCommandForm" class="motor-command-form">
-              <label class="motor-speed-control">
-                <span>Wheel Speed / 轮端等效速度</span>
+              <label class="cmd-row">
+                <span>Linear X</span>
                 <input id="motorTargetSpeedSlider" name="target_speed_mps" type="range" min="0" max="0.25" step="0.01" value="0" />
+                <strong id="motorTargetSpeedInputValue" class="mono">0.00 m/s</strong>
               </label>
-              <div class="motor-command-readout">
-                <span>target_speed</span>
-                <strong id="motorTargetSpeedInputValue" class="motor-number-value">0.00 m/s</strong>
-              </div>
-              <div class="motor-command-readout">
-                <span>equiv_target_rpm</span>
-                <strong id="motorTargetRpmInputValue" class="motor-number-value">0 rpm</strong>
-              </div>
-              <div class="motor-command-readout">
-                <span>direction</span>
-                <strong id="motorDirectionInputValue" class="text-fixed">forward</strong>
-              </div>
-              <label>
-                <span>timeout_ms</span>
+              <div class="cmd-row">
+                <span>Timeout</span>
                 <input id="motorTimeoutInput" name="timeout_ms" type="number" step="50" min="100" value="800" />
-              </label>
-              <div class="motor-command-actions">
-                <button id="motorApplyButton" class="primary-button" type="submit">Apply</button>
-                <button id="motorStopButton" class="ghost-button" type="button">Stop</button>
+                <strong id="motorTargetRpmInputValue" class="mono">0 rpm</strong>
               </div>
+              <span id="motorDirectionInputValue" class="hidden-diagnostics">forward</span>
+              <button id="motorApplyButton" class="primary-button" type="submit">SEND CMD</button>
             </form>
-            <p id="motorCommandMessage" class="section-meta">等待下发控制命令...</p>
-            <div class="motor-bench-grid">
-              <div class="motor-primary-row">
-                <div class="motor-bench-tile">
-                  <span>Target Wheel Speed</span>
-                  <strong id="motorTargetWheelSpeed" class="motor-number-value">--.-- m/s</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>Actual Wheel Speed</span>
-                  <strong id="motorActualWheelSpeed" class="motor-number-value">--.-- m/s</strong>
-                </div>
-              </div>
-              <div class="motor-ticks-grid">
-                <div class="motor-bench-tile">
-                  <span>Target RPM</span>
-                  <strong id="motorTargetRpm" class="motor-number-value">----- rpm</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>Actual RPM</span>
-                  <strong id="motorMeasuredRpm" class="motor-number-value">----- rpm</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>PWM</span>
-                  <strong id="motorPwmValue" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>Direction</span>
-                  <strong id="motorDirectionValue" class="text-fixed">-</strong>
-                </div>
-              </div>
-              <div class="motor-ticks-grid">
-                <div class="motor-bench-tile">
-                  <span>Status</span>
-                  <strong id="motorWheelStatusValue" class="text-fixed">no data</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>Bench Limit</span>
-                  <strong id="motorBenchLimitValue" class="text-fixed">max 80 rpm</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>error_rpm</span>
-                  <strong id="motorErrorRpm" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>enabled</span>
-                  <strong id="motorEnabledValue" class="text-fixed">-</strong>
-                </div>
-              </div>
-              <div class="motor-ticks-grid">
-                <div class="motor-bench-tile">
-                  <span>closed_loop</span>
-                  <strong id="motorClosedLoopValue" class="text-fixed">-</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>fault</span>
-                  <strong id="motorFaultValue" class="text-fixed">-</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>source</span>
-                  <strong id="motorCommandSource" class="text-fixed">-</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>max_pwm</span>
-                  <strong id="motorMaxPwmValue" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>timeout_ms</span>
-                  <strong id="motorTimeoutMsValue" class="motor-number-value">-----</strong>
-                </div>
-              </div>
-              <div class="motor-ticks-grid">
-                <div class="motor-bench-tile">
-                  <span>timeout / stop / fault</span>
-                  <strong id="motorSafetyFlags" class="text-fixed">- / - / -</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>loop</span>
-                  <strong id="motorLoop" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile motor-bench-wide">
-                  <span>motor_state</span>
-                  <strong id="motorStateJsonValue" class="mono text-fixed">-</strong>
-                </div>
-              </div>
-              <div class="motor-ticks-grid">
-                <div class="motor-bench-tile">
-                  <span>bench_enabled</span>
-                  <strong id="motorBenchEnabled" class="text-fixed">-</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>safety_mode</span>
-                  <strong id="motorSafetyMode" class="text-fixed">-</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>target_ticks_per_sec</span>
-                  <strong id="motorTargetTicks" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>measured_ticks_per_sec</span>
-                  <strong id="motorMeasuredTicks" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>encoder_count</span>
-                  <strong id="motorEncoderCount" class="motor-number-value">-----</strong>
-                </div>
-                <div class="motor-bench-tile">
-                  <span>invalid_transitions</span>
-                  <strong id="motorInvalidTransitions" class="motor-number-value">-----</strong>
-                </div>
-              </div>
-              <div class="stable-row">
-                <span>State</span>
-                <strong id="motorStateValue" class="mono text-fixed">offline</strong>
-              </div>
-            </div>
-          </div>
-        </section>
+            <p id="motorCommandMessage" class="compact-meta card-footer">控制链路未连接，等待 backend / MQTT</p>
+          </section>
 
-        <section class="panel dashboard-card event-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Event Stream</p>
-              <h2>事件流</h2>
+          <section class="cockpit-card safety-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Safety</p>
+                <h2>安全急停</h2>
+              </div>
             </div>
-            <p id="eventStreamMeta" class="section-meta">latest 10 status events</p>
-          </div>
-          <ol id="eventStreamList" class="event-stream-list" aria-live="polite"></ol>
-        </section>
+            <div class="card-body safety-body">
+              <button id="motorStopButton" class="estop-button" type="button">STOP</button>
+              <p id="safetyStatusValue" class="compact-meta">Safety: standby</p>
+            </div>
+          </section>
+        </aside>
       </main>
+
+      <footer class="bottom-log">
+        <section class="log-dock">
+          <div class="log-head">
+            <div>
+              <p class="section-kicker">Event Log</p>
+              <h2>最近事件</h2>
+            </div>
+            <p id="eventStreamMeta" class="compact-meta">latest 5 status events</p>
+          </div>
+          <ol id="eventStreamList" class="event-stream-list card-body" aria-live="polite"></ol>
+        </section>
+        <section class="task-dock">
+          <div class="log-head">
+            <div>
+              <p class="section-kicker">Current Task Progress</p>
+              <h2>任务进度</h2>
+            </div>
+            <strong id="taskProgressValue" class="task-progress-value">--%</strong>
+          </div>
+          <div class="info-grid progress-kv card-body">
+            <div>
+              <span>Stage</span>
+              <strong id="taskStageValue" class="mono">-</strong>
+            </div>
+            <div>
+              <span>Current Step</span>
+              <strong id="taskStepValue" class="mono">-</strong>
+            </div>
+          </div>
+          <div class="progress">
+            <div class="progress-track">
+              <div id="taskProgressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="task-counts">
+            <span>Active <strong id="taskActiveCount">--</strong></span>
+            <span>Blocked <strong id="taskBlockedCount">--</strong></span>
+            <span>Completed <strong id="taskCompletedCount">--</strong></span>
+            <span>Total <strong id="taskTotalCount">--</strong></span>
+          </div>
+          <p id="tasksMeta" class="compact-meta card-footer">waiting for tasks</p>
+        </section>
+      </footer>
+
+      <div id="summaryGrid" class="summary-grid hidden-diagnostics" aria-hidden="true"></div>
     </div>
 
-    <script src="./app.js?v=20260520-motor-loop"></script>
+    <script src="./app.js?v=20260526-no-scroll-fit"></script>
   </body>
 </html>

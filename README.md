@@ -197,6 +197,7 @@ flowchart TD
 - Dashboard 是观察与监控层，不是机器人控制器
 - 前端保持纯 HTML / CSS / JavaScript
 - Backend 通过 HTTP adapter 读取 AMR API，不直接依赖 ROS 2、Nav2 或 Gazebo
+- IMU、robot state 与设备遥测链路保持只读镜像；电机 bench 命令走显式受限接口
 - 集成配置通过环境变量管理，例如 `ROBOT_OPS_TASK_SOURCE`、`AMR_API_BASE_URL`、`MQTT_BROKER_URL`
 - 网络失败、上游不可用或 broker 断开时，前端需要明确显示 `disconnected` 或错误状态
 - 所有会影响上游或下游行为的能力都必须通过显式 HTTP 接口触发，不能有隐藏副作用
@@ -500,6 +501,33 @@ STM32 + MPU6050
 ./scripts/start_microros_sensor_stack.sh
 ```
 
+如果 micro-ROS Agent 已经在 `8888` 运行，只想拉起电机 bench 控制链路，可使用电机专用脚本：
+
+```bash
+./scripts/start_motor_control_chain.sh
+```
+
+该脚本不会启动或抢占 micro-ROS Agent，只会启动或复用：
+
+- MQTT broker：`mqtt://127.0.0.1:1883`
+- ROS 2 -> MQTT motor status bridge：`/motor/status` -> `robot/motor/status`
+- MQTT -> ROS 2 motor cmd bridge：`robot/motor/cmd` -> `/motor/cmd`
+- Dashboard backend：`http://127.0.0.1:9000`
+- Frontend 页面：`http://127.0.0.1:8001/frontend/`
+
+常用调试：
+
+```bash
+./scripts/start_motor_control_chain.sh --check
+./scripts/start_motor_control_chain.sh --status
+./scripts/start_motor_control_chain.sh --stop
+
+# 需要显式验证命令发布链路时，发送一次 stop=true 探针
+./scripts/start_motor_control_chain.sh --send-stop-probe
+```
+
+默认启动不会发任何电机命令；`--send-stop-probe` 会通过 `POST /api/robot/motor/cmd` 发布一次 `stop=true` 安全探针。
+
 默认启动或复用：
 
 - MQTT broker：`mqtt://127.0.0.1:1883`
@@ -548,7 +576,7 @@ STM32 + MPU6050
 
 ## WebSocket Status Stream
 
-Dashboard backend 提供只读 WebSocket 状态流：
+Dashboard backend 提供状态 WebSocket 流：
 
 - Endpoint：`/ws/status`
 - 方向：Dashboard Backend -> Frontend
@@ -638,7 +666,7 @@ chmod +x scripts/run_amr_dashboard_recording_demo.sh
 
 - 该脚本是 **录屏/demo 编排工具**，不是常规 dashboard 测试脚本。
 - 任务执行由上游 `amr_warehouse_sim/scripts/run_mock_wms_visual_demo.sh` 完成。
-- Dashboard 本身只通过 HTTP API 读取或创建 Mock WMS task，不直接控制 Nav2、Gazebo、电机或真实机器人。
+- Dashboard 本身只通过 HTTP API 读取或创建 Mock WMS task，不直接控制 Nav2 或 Gazebo；电机 bench 命令只走 `POST /api/robot/motor/cmd` 这条显式受限链路。
 - 如果 8000 端口已有 AMR API 但读取的不是 `data/mock_wms.db`，脚本会直接报错，避免再次出现“测试在跑，但看板盯着另一个数据库”的情况。
 
 ## HTTP Integration Verification
@@ -680,7 +708,7 @@ DASHBOARD_API_BASE_URL=http://127.0.0.1:9000 \
 
 ## 项目边界
 
-本仓库负责的是“观察、聚合、解释、展示”，并提供最小 Mock WMS 任务创建 proxy，不直接承担底层控制职责。
+本仓库负责的是“观察、聚合、解释、展示”，并提供最小 Mock WMS 任务创建 proxy 与受限电机 bench 命令入口，不直接承担底盘级底层控制职责。
 
 当前代码还提供一条受限的电机控制入口：`POST /api/robot/motor/cmd`。该能力通过 backend 发布低频 MQTT 命令，适合本地 bench / dashboard 联调，但不等同于完整机器人控制平面。
 

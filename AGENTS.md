@@ -6,14 +6,16 @@
 
 - 本仓库是 `robot-ops-dashboard`。
 - 当前定位是 Robot Operations Dashboard。
-- 当前主要用途是读取 AMR Mock WMS HTTP API，并展示 AMR 任务状态。
-- Dashboard 是观察与监控层，不是机器人控制器。
+- 当前主要用途是读取 AMR Mock WMS HTTP API、展示 AMR 任务状态，并承接受限的本地 bench 联调入口。
+- Dashboard 是运维与测试驾驶舱，不是 Nav2、底盘级高频闭环或完整机器人控制器。
 
 ## 当前阶段
 
-- 当前阶段是 `read-only monitoring`。
+- 当前阶段是 `monitoring-first with explicit interactions`。
 - 不提供控制 Nav2 的能力。
-- 不提供控制电机、底盘或真实机器人的能力。
+- IMU、robot state 与设备遥测链路保持只读镜像。
+- 允许通过已设计并实现的显式接口发布低频受限电机 bench 命令。
+- 不提供底盘级高频闭环、多机器人编排或真实机器人完整控制能力。
 - 不允许增加会改变上游机器人行为的隐藏副作用。
 
 ## 前端约束
@@ -41,7 +43,7 @@
 
 ## 变更流程
 
-- 如需新增 `POST /tasks`、WebSocket、MQTT、多机器人编排或任何真实控制能力，必须先写设计文档。
+- 如需新增超出现有 `POST /api/wms/tasks`、`WebSocket /ws/status`、MQTT 状态接入和 `POST /api/robot/motor/cmd` 之外的交互能力，必须先写设计文档。
 - 设计文档应放在 `docs/` 下，再进入实现阶段。
 - 不要在缺少设计文档的情况下直接实现重大能力扩展。
 - 所有变更必须符合当前 monitoring-first 的仓库边界。
@@ -64,4 +66,4 @@
 
 - 保持代码库简单，便于本地开发和演示。
 - 优先做小而明确的修改，不做无设计依据的大型迁移。
-- 除非文档明确批准扩展，否则始终尊重当前只读监控边界。
+- 除非文档明确批准扩展，否则始终尊重当前 monitoring-first 与显式交互边界。

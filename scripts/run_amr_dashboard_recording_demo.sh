@@ -83,7 +83,7 @@ usage() {
 
 说明：
   这个脚本是录屏编排工具，会显式调用 AMR 仓库的 visual demo。
-  Dashboard 本身仍然只读，只通过 HTTP 读取 AMR Mock WMS /tasks。
+  Dashboard 通过 HTTP 读取或创建 AMR Mock WMS task；电机 bench 命令不由本脚本触发。
 EOF
 }
 

@@ -223,7 +223,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 读取并返回：
 
 - 默认读取 `mock/sample_amr_tasks.json`（`ROBOT_OPS_TASK_SOURCE=mock_json`）
-- 可切换到 AMR HTTP 只读模式：设置 `ROBOT_OPS_TASK_SOURCE=amr_http`，并配置 `AMR_API_BASE_URL`。
+- 可切换到 AMR HTTP 读取模式：设置 `ROBOT_OPS_TASK_SOURCE=amr_http`，并配置 `AMR_API_BASE_URL`。
 
 注意：`/api/tasks` 仍是 Dashboard Task 契约读取接口；Mock WMS task 创建请使用 `/api/wms/tasks`。
 
@@ -311,7 +311,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 
 ### `WebSocket /ws/status`
 
-推送 Dashboard 只读状态快照：
+推送 Dashboard 状态快照：
 
 - `tasks` 复用 `/api/tasks` 的数据源配置与映射逻辑
 - `robot` 由 `mock/sample_device_status.json` 与 MQTT 最新设备状态聚合得到
@@ -361,7 +361,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - 上游 AMR HTTP 请求失败 / 超时 / 返回非 200
 - 上游任务映射失败或返回结构不符合 Dashboard 契约
 - AMR Mock WMS task proxy 创建失败时，返回 `amr_wms_proxy_error`
-- MQTT broker 未启动或暂时断开时，`/api/robot/status` 返回连接状态，不影响其它只读接口启动
+- MQTT broker 未启动或暂时断开时，`/api/robot/status` 返回连接状态，不影响其它查询接口启动
 
 错误返回会包含：
 

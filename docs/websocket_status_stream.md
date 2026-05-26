@@ -84,8 +84,8 @@ WebSocket 状态流仍通过 Dashboard Backend 内部既有读取逻辑获得数
 - 前端继续通过现有 HTTP polling 读取 `/api/tasks`、`/api/device-status` 和 `/api/alerts`。
 - 前端继续通过 `/api/robot/status` 读取 MQTT `robot/imu` 最新缓存，作为 IMU 区域的 HTTP fallback。
 - 前端继续通过 `/api/robot/status` 读取 MQTT `robot/motor/status` 最新缓存，作为 Motor / Encoder 状态区域的 HTTP fallback；无真实 topic 时保持 null / placeholder。
-- 如果后端生成状态快照时无法读取上游 AMR HTTP API，WebSocket 发送只读错误快照，不对上游产生写入或控制副作用。
-- 如果 MQTT broker 未连接，`robot.mqtt.connection.status` 会显示 `disconnected` 或 `connecting`，不会影响 AMR HTTP 只读接口。
+- 如果后端生成状态快照时无法读取上游 AMR HTTP API，WebSocket 发送错误状态快照，不对上游产生写入或控制副作用。
+- 如果 MQTT broker 未连接，`robot.mqtt.connection.status` 会显示 `disconnected` 或 `connecting`，不会影响 AMR HTTP 查询接口。
 - IMU 区域按 `robot/imu` 最新 `received_at` 判断状态：超过 3 秒无新消息显示 `stale`，超过 10 秒显示 `offline`。
 - 电机控制仍走独立的 `POST /api/robot/motor/cmd`，不会复用 `/ws/status`。
 

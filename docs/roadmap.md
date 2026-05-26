@@ -27,7 +27,7 @@ V0.1 不引入前端框架，重点把项目定位、边界、数据契约、Moc
 - README
 - 设计、路线、接口、数据源、页面与测试文档
 - `mock/*.json` 示例数据
-- `backend/` 下的只读 API 最小实现
+- `backend/` 下的查询 API 最小实现
 
 ## V0.2 AMR HTTP、WMS Task Proxy、MQTT 状态与 Motor Command
 
@@ -50,7 +50,7 @@ Current：HTTP REST + Mock WMS task proxy + WebSocket status stream + MQTT 状�
 - `GET /api/wms/tasks` / `POST /api/wms/tasks`
 - WebSocket `/ws/status` 状态推送
 - MQTT `robot/state` / `robot/imu` / `robot/motor/status` / `robot/alarm` 最新消息缓存
-- `GET /api/robot/status` 只读状态接口
+- `GET /api/robot/status` 状态查询接口
 - `POST /api/robot/motor/cmd` 低频受限控制接口
 - 任务状态归一化
 - 基础任务告警生成
