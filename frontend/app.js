@@ -5,6 +5,7 @@ const IMU_STALE_AFTER_MS = 2000;
 const IMU_OFFLINE_AFTER_MS = 5000;
 const IMU_HISTORY_LIMIT = 30;
 const MOTOR_HISTORY_LIMIT = 60;
+const EVENT_STREAM_LIMIT = 8;
 const MOTOR_WHEEL_DIAMETER_M = 0.065;
 const MOTOR_WHEEL_CIRCUMFERENCE_M = Math.PI * MOTOR_WHEEL_DIAMETER_M;
 const MOTOR_BENCH_MAX_RPM = 80;
@@ -19,6 +20,7 @@ const DATA_FILES = {
   alerts: `${API_BASE_URL}/api/alerts`,
   robotStatus: `${API_BASE_URL}/api/robot/status`,
   motorCommand: `${API_BASE_URL}/api/robot/motor/cmd`,
+  simPreview: `${API_BASE_URL}/api/sim/preview`,
 };
 
 const WMS_TASK_POINTS = ["station_a", "station_b", "dock_a", "start_zone"];
@@ -86,12 +88,8 @@ const rootNodes = {
   taskCurrentStatus: document.querySelector("#taskCurrentStatus"),
   taskCurrentRoute: document.querySelector("#taskCurrentRoute"),
   taskCurrentRobot: document.querySelector("#taskCurrentRobot"),
-  taskCurrentSource: document.querySelector("#taskCurrentSource"),
-  taskCurrentBlockReason: document.querySelector("#taskCurrentBlockReason"),
   taskProgressValue: document.querySelector("#taskProgressValue"),
   taskProgressFill: document.querySelector("#taskProgressFill"),
-  taskCardProgress: document.querySelector("#taskCardProgress"),
-  taskCardProgressFill: document.querySelector("#taskCardProgressFill"),
   taskStageValue: document.querySelector("#taskStageValue"),
   taskStepValue: document.querySelector("#taskStepValue"),
   imuMeta: document.querySelector("#imuMeta"),
@@ -181,6 +179,14 @@ const rootNodes = {
   pipelineMqtt: document.querySelector("#pipelineMqtt"),
   pipelineBackend: document.querySelector("#pipelineBackend"),
   pipelineFrontend: document.querySelector("#pipelineFrontend"),
+  pipelineTaskFrontend: document.querySelector("#pipelineTaskFrontend"),
+  pipelineTaskBackend: document.querySelector("#pipelineTaskBackend"),
+  pipelineTaskAmr: document.querySelector("#pipelineTaskAmr"),
+  pipelineMotorFrontend: document.querySelector("#pipelineMotorFrontend"),
+  pipelineMotorBackend: document.querySelector("#pipelineMotorBackend"),
+  pipelineMotorMqtt: document.querySelector("#pipelineMotorMqtt"),
+  pipelineMotorRos: document.querySelector("#pipelineMotorRos"),
+  pipelineMotorEsp32: document.querySelector("#pipelineMotorEsp32"),
   safetyStatusValue: document.querySelector("#safetyStatusValue"),
   eventStreamMeta: document.querySelector("#eventStreamMeta"),
   eventStreamList: document.querySelector("#eventStreamList"),
@@ -196,6 +202,12 @@ const rootNodes = {
   wmsRefreshButton: document.querySelector("#wmsRefreshButton"),
   wmsTaskMessage: document.querySelector("#wmsTaskMessage"),
   wmsTasksTable: document.querySelector("#wmsTasksTable"),
+  simPreviewImage: document.querySelector("#simPreviewImage"),
+  simPreviewPlaceholder: document.querySelector("#simPreviewPlaceholder"),
+  simPreviewSource: document.querySelector("#simPreviewSource"),
+  simPreviewConnection: document.querySelector("#simPreviewConnection"),
+  simPreviewLastUpdate: document.querySelector("#simPreviewLastUpdate"),
+  simPreviewLabel: document.querySelector("#simPreviewLabel"),
 };
 
 const cachedPayloads = {
@@ -204,6 +216,7 @@ const cachedPayloads = {
   devices: null,
   alerts: null,
   robotStatus: null,
+  simPreview: null,
 };
 
 let refreshInFlight = false;
@@ -224,22 +237,28 @@ const transportState = {
   backendConnected: false,
   streamConnected: false,
 };
+const simPreviewRuntime = {
+  loadError: false,
+};
 let motorControlsBusy = false;
 
 setupWmsTaskControls();
 setupMotorCommandControls();
+setupSimPreviewImage();
 renderImuStatus(null, { loading: true });
 renderMotorStatus(null, { loading: true });
 appendEventStreamEntry({
   key: "dashboard-start",
   status: "info",
-  title: "Dashboard frontend loaded",
-  detail: "Waiting for dashboard data",
+  title: "Dashboard UI ready",
+  detail: "Waiting for backend status.",
 });
 init();
 loadWmsTasks();
+loadSimPreview();
 connectStatusWebSocket();
 window.setInterval(init, REFRESH_INTERVAL_MS);
+window.setInterval(loadSimPreview, REFRESH_INTERVAL_MS);
 window.setInterval(refreshImuDisplay, 1000);
 window.setInterval(refreshMotorDisplay, 1000);
 
@@ -1817,6 +1836,13 @@ async function handleWmsTaskSubmit(event) {
     const createdTask = await postJson(DATA_FILES.wmsTasks, payload);
     const taskId = createdTask?.id || createdTask?.task_id || createdTask?.task_name || "created";
     renderWmsTaskMessage(`Task created: ${taskId}`);
+    appendEventStreamEntry({
+      key: `wms-created-${taskId}`,
+      status: "online",
+      title: `Task dispatched: ${taskId}`,
+      detail: `${payload.pickup} -> ${payload.dropoff} · ${payload.task_type}`,
+      timestamp: createdTask?.created_at || createdTask?.updated_at,
+    });
     await loadWmsTasks();
   } catch (error) {
     renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
@@ -1832,24 +1858,18 @@ async function handleWmsTaskSubmit(event) {
 }
 
 async function loadWmsTasks() {
-  if (!rootNodes.wmsTasksTable) {
-    return;
-  }
-
   setWmsRefreshDisabled(true);
 
   try {
     const payload = await fetchJson(DATA_FILES.wmsTasks);
     cachedPayloads.wmsTasks = payload;
     renderWmsTasks(payload);
-    renderWmsTaskMessage(`WMS task list refreshed: ${extractWmsTasks(payload).length} tasks`);
   } catch (error) {
     const errorMessage = normalizeError(error);
     if (cachedPayloads.wmsTasks) {
       renderWmsTasks(cachedPayloads.wmsTasks, { stale: true, errorMessage });
       renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
     } else {
-      rootNodes.wmsTasksTable.innerHTML = "";
       renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
     }
     appendEventStreamEntry({
@@ -1863,51 +1883,105 @@ async function loadWmsTasks() {
   }
 }
 
-function renderWmsTasks(payload, options = {}) {
-  const tasks = extractWmsTasks(payload).map(normalizeWmsTask);
-
-  if (!tasks.length) {
-    rootNodes.wmsTasksTable.innerHTML = buildEmptyState("当前没有 WMS 任务。");
+async function loadSimPreview() {
+  if (!rootNodes.simPreviewConnection) {
     return;
   }
 
-  rootNodes.wmsTasksTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Task ID</th>
-          <th>Pickup</th>
-          <th>Dropoff</th>
-          <th>Status</th>
-          <th>Created</th>
-          <th>Updated</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tasks
-          .map(
-            (task) => `
-              <tr>
-                <td>
-                  <strong>${escapeHtml(task.id)}</strong>
-                  <div class="subnote mono">${escapeHtml(task.name || "-")}</div>
-                </td>
-                <td>${escapeHtml(task.pickup)}</td>
-                <td>${escapeHtml(task.dropoff)}</td>
-                <td>${buildBadge(task.status, task.status)}</td>
-                <td>${formatDate(task.created_at)}</td>
-                <td>${formatDate(task.updated_at)}</td>
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  try {
+    const payload = await fetchJson(DATA_FILES.simPreview);
+    cachedPayloads.simPreview = payload;
+    renderSimPreview(payload);
+  } catch (error) {
+    const errorMessage = normalizeError(error);
+    renderSimPreview(
+      cachedPayloads.simPreview || {
+        source: "mock",
+        connection: "disconnected",
+        stream_url: null,
+        last_update_at: null,
+        label: "Gazebo Path View",
+      },
+      {
+        disconnected: true,
+        errorMessage,
+      }
+    );
+  }
+}
+
+function renderSimPreview(payload, options = {}) {
+  const streamUrl = typeof payload?.stream_url === "string" ? payload.stream_url.trim() : "";
+  const connection = options.disconnected ? "disconnected" : payload?.connection || "disconnected";
+  const source = payload?.source || "mock";
+  const label = payload?.label || "Gazebo Path View";
+
+  setText(rootNodes.simPreviewSource, source);
+  setText(rootNodes.simPreviewConnection, connection);
+  setText(rootNodes.simPreviewLabel, label);
+  setText(rootNodes.simPreviewLastUpdate, payload?.last_update_at ? formatDate(payload.last_update_at) : "--");
+
+  if (rootNodes.simPreviewConnection) {
+    rootNodes.simPreviewConnection.dataset.state = connection === "connected" ? "connected" : "disconnected";
+  }
+
+  if (!rootNodes.simPreviewImage || !rootNodes.simPreviewPlaceholder) {
+    return;
+  }
+
+  if (streamUrl && connection === "connected") {
+    const currentSrc = rootNodes.simPreviewImage.getAttribute("src") || "";
+    if (currentSrc !== streamUrl || simPreviewRuntime.loadError) {
+      simPreviewRuntime.loadError = false;
+      rootNodes.simPreviewImage.hidden = false;
+      rootNodes.simPreviewPlaceholder.hidden = true;
+      rootNodes.simPreviewImage.setAttribute("src", streamUrl);
+    }
+    return;
+  }
+
+  simPreviewRuntime.loadError = false;
+  rootNodes.simPreviewImage.hidden = true;
+  rootNodes.simPreviewImage.removeAttribute("src");
+  rootNodes.simPreviewPlaceholder.hidden = false;
+}
+
+function setupSimPreviewImage() {
+  if (!rootNodes.simPreviewImage || !rootNodes.simPreviewPlaceholder) {
+    return;
+  }
+
+  rootNodes.simPreviewImage.onload = () => {
+    simPreviewRuntime.loadError = false;
+    rootNodes.simPreviewImage.hidden = false;
+    rootNodes.simPreviewPlaceholder.hidden = true;
+    if (rootNodes.simPreviewConnection) {
+      rootNodes.simPreviewConnection.textContent = "connected";
+      rootNodes.simPreviewConnection.dataset.state = "connected";
+    }
+  };
+
+  rootNodes.simPreviewImage.onerror = () => {
+    simPreviewRuntime.loadError = true;
+    rootNodes.simPreviewImage.hidden = true;
+    rootNodes.simPreviewImage.removeAttribute("src");
+    rootNodes.simPreviewPlaceholder.hidden = false;
+    if (rootNodes.simPreviewConnection) {
+      rootNodes.simPreviewConnection.textContent = "disconnected";
+      rootNodes.simPreviewConnection.dataset.state = "disconnected";
+    }
+  };
+}
+
+function renderWmsTasks(payload, options = {}) {
+  const taskCount = extractWmsTasks(payload).length;
 
   if (options.stale) {
     renderWmsTaskMessage("任务列表不可用，使用本地演示选项", true);
+    return;
   }
+
+  renderWmsTaskMessage(`Last refresh: ${taskCount} tasks`);
 }
 
 function extractWmsTasks(payload) {
@@ -1985,7 +2059,7 @@ function renderWmsTaskMessage(message, isError = false) {
     return;
   }
 
-  rootNodes.wmsTaskMessage.textContent = isError ? "任务列表不可用，使用本地演示选项" : truncateText(message, 48);
+  rootNodes.wmsTaskMessage.textContent = isError ? "任务列表不可用，使用本地演示选项" : truncateText(message, 42);
   rootNodes.wmsTaskMessage.dataset.state = isError ? "error" : "ok";
 }
 
@@ -2085,14 +2159,6 @@ function handleStatusMessage(payload) {
     realtime: true,
     sourceMode: "websocket",
     errorMessage: robot.error,
-  });
-
-  appendEventStreamEntry({
-    key: `ws-${websocketState.lastMessageAt}`,
-    status: robot.status === "disconnected" ? "error" : "online",
-    title: "Status stream update",
-    detail: `tasks: ${tasksPayload.data.length} · devices: ${devicesPayload.data.length}`,
-    timestamp: websocketState.lastMessageAt,
   });
 
   if (cachedPayloads.alerts) {
@@ -2225,9 +2291,15 @@ function renderTasks(tasksPayload, options = {}) {
   const completedTasks = tasks.filter((task) => task.status === "completed");
   const currentTask = activeTasks[0] || tasks[0] || null;
   const progress = clampPercent(toFiniteNumber(currentTask?.progress) || 0);
-  const taskStage = currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-";
+  const taskStatus = currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-";
+  const taskStage = currentTask ? currentTask.stage || currentTask.phase || currentTask.task_type || "-" : "-";
   const taskStep = currentTask
-    ? currentTask.blocked_reason || currentTask.last_event || currentTask.source_status || currentTask.task_type || "-"
+    ? currentTask.current_step ||
+      currentTask.step ||
+      currentTask.blocked_reason ||
+      currentTask.last_event ||
+      currentTask.task_type ||
+      "-"
     : "-";
 
   setText(rootNodes.taskActiveCount, formatCount(activeTasks.length));
@@ -2235,22 +2307,58 @@ function renderTasks(tasksPayload, options = {}) {
   setText(rootNodes.taskCompletedCount, formatCount(completedTasks.length));
   setText(rootNodes.taskTotalCount, formatCount(tasks.length));
   setText(rootNodes.taskCurrentId, currentTask?.task_id || "-");
-  setText(rootNodes.taskCurrentStatus, taskStage);
+  setText(rootNodes.taskCurrentStatus, taskStatus);
+  if (rootNodes.taskCurrentStatus) {
+    rootNodes.taskCurrentStatus.dataset.state = currentTask?.status || "idle";
+  }
   setText(
     rootNodes.taskCurrentRoute,
     currentTask ? `${currentTask.pickup_station || "-"} -> ${currentTask.dropoff_station || "-"}` : "-"
   );
   setText(rootNodes.taskCurrentRobot, currentTask?.robot_id || "-");
-  setText(rootNodes.taskCurrentSource, currentTask?.source_status || currentTask?.task_type || "-");
-  setText(rootNodes.taskCurrentBlockReason, currentTask?.blocked_reason || "-");
   setText(rootNodes.taskStageValue, taskStage);
   setText(rootNodes.taskStepValue, taskStep);
   setText(rootNodes.taskProgressValue, currentTask ? `${Math.round(progress)}%` : "--%");
   setWidthPercent(rootNodes.taskProgressFill, progress);
-  setText(rootNodes.taskCardProgress, currentTask ? `${Math.round(progress)}%` : "--%");
-  setWidthPercent(rootNodes.taskCardProgressFill, progress);
+  appendCurrentTaskEvent(currentTask, progress, options);
 
   refreshRobotInfo();
+}
+
+function appendCurrentTaskEvent(currentTask, progress, options = {}) {
+  if (!currentTask) {
+    appendEventStreamEntry({
+      key: `tasks-empty-${options.realtime ? "stream" : "http"}`,
+      status: "info",
+      title: "No active WMS task",
+      detail: `${options.realtime ? "Status stream" : "HTTP polling"} reports no current task.`,
+    });
+    return;
+  }
+
+  const taskId = currentTask.task_id || currentTask.id || currentTask.task_name || "task";
+  const status = currentTask.status || currentTask.source_status || "unknown";
+  const route = `${currentTask.pickup_station || "-"} -> ${currentTask.dropoff_station || "-"}`;
+  const step =
+    currentTask.current_step ||
+    currentTask.step ||
+    currentTask.blocked_reason ||
+    currentTask.last_event ||
+    currentTask.task_type ||
+    "-";
+  const roundedProgress = Math.round(progress);
+  appendEventStreamEntry({
+    key: `task-${taskId}-${status}-${roundedProgress}-${step}`,
+    status:
+      status === "blocked" || status === "failed"
+        ? "error"
+        : status === "queued" || status === "dispatching"
+          ? "stale"
+          : "online",
+    title: `Task ${taskStatusLabel[status] || status}: ${taskId}`,
+    detail: `${route} · ${roundedProgress}% · ${step}`,
+    timestamp: currentTask.updated_at || currentTask.last_update_at || currentTask.created_at || currentTask.completed_at,
+  });
 }
 
 function renderDevices(devicesPayload, options = {}) {
@@ -2283,7 +2391,7 @@ function renderDevices(devicesPayload, options = {}) {
 function renderAlerts(alertsPayload, options = {}) {
   const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
   if (rootNodes.eventStreamMeta) {
-    rootNodes.eventStreamMeta.textContent = `${alerts.length} alerts · latest 5 status events`;
+    rootNodes.eventStreamMeta.textContent = `${alerts.length} alerts · latest ${EVENT_STREAM_LIMIT} status events`;
     rootNodes.eventStreamMeta.dataset.state = options.errorMessage ? "error" : "ok";
   }
 
@@ -2384,7 +2492,7 @@ function appendEventStreamEntry(entry) {
   item.append(dot, body);
   rootNodes.eventStreamList.prepend(item);
 
-  while (rootNodes.eventStreamList.children.length > 5) {
+  while (rootNodes.eventStreamList.children.length > EVENT_STREAM_LIMIT) {
     const removed = rootNodes.eventStreamList.lastElementChild;
     if (!removed) {
       break;
@@ -2459,6 +2567,9 @@ function refreshLinkBoard() {
   const mqttConnection = String(cachedPayloads.robotStatus?.connection?.status || "").toLowerCase();
   const imuView = buildImuViewModel(latestImuSnapshot);
   const motorView = buildMotorViewModel(latestMotorSnapshot);
+  const hasTaskHttpData = Boolean(cachedPayloads.tasks || cachedPayloads.wmsTasks);
+  const mqttState = mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown";
+  const backendState = transportState.backendConnected ? "online" : "offline";
   const microRosSummary = summarizeDeviceGroup(devices, (device) =>
     String(device?.transport || "").toLowerCase() === "micro_ros" ||
     String(device?.transport || "").toLowerCase() === "microros"
@@ -2493,9 +2604,17 @@ function refreshLinkBoard() {
   setHealthNode(rootNodes.pipelineEsp32, motorView.hasPayload || imuView.hasPayload ? "ESP32" : "ESP32", motorView.hasPayload || imuView.hasPayload ? "online" : "unknown");
   setHealthNode(rootNodes.pipelineMicroRos, "micro-ROS", microRosSummary.state === "offline" && !imuView.hasPayload ? "unknown" : microRosSummary.state);
   setHealthNode(rootNodes.pipelineRos, "ROS 2", imuView.hasPayload ? "online" : "unknown");
-  setHealthNode(rootNodes.pipelineMqtt, "MQTT", mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown");
-  setHealthNode(rootNodes.pipelineBackend, "Backend", transportState.backendConnected ? "online" : "offline");
+  setHealthNode(rootNodes.pipelineMqtt, "MQTT", mqttState);
+  setHealthNode(rootNodes.pipelineBackend, "Backend", backendState);
   setHealthNode(rootNodes.pipelineFrontend, "Frontend", "online");
+  setHealthNode(rootNodes.pipelineTaskFrontend, "Frontend", "online");
+  setHealthNode(rootNodes.pipelineTaskBackend, "Backend Proxy", backendState);
+  setHealthNode(rootNodes.pipelineTaskAmr, "AMR Mock WMS", hasTaskHttpData ? "online" : "unknown");
+  setHealthNode(rootNodes.pipelineMotorFrontend, "Frontend", "online");
+  setHealthNode(rootNodes.pipelineMotorBackend, "Backend", backendState);
+  setHealthNode(rootNodes.pipelineMotorMqtt, "MQTT", mqttState);
+  setHealthNode(rootNodes.pipelineMotorRos, "ROS 2 Bridge", motorView.hasPayload ? "online" : "unknown");
+  setHealthNode(rootNodes.pipelineMotorEsp32, "ESP32 Motor", motorView.hasPayload ? statusToDataState(motorView.linkStatus) : "unknown");
 
   if (rootNodes.previewMode) {
     const isOnline = transportState.backendConnected || transportState.streamConnected;

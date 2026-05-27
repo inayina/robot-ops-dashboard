@@ -14,6 +14,7 @@
 - 读取 `mock/` 目录下的 JSON 文件
 - 通过 HTTP API 返回任务、设备状态和告警数据
 - 通过 HTTP adapter 读取上游 AMR API 并映射为 Dashboard 统一任务模型
+- 通过 HTTP adapter 代理 AMR / Gazebo / RViz 侧已经暴露的只读 MJPEG path preview stream
 - 通过 MQTT 订阅机器人状态 topic，并在内存中缓存最新消息
 - 通过 MQTT 发布受限的 motor command
 - 为纯静态前端提供统一入口
@@ -23,6 +24,7 @@
 - 不修改 `amr_warehouse_navigation`
 - 不接数据库
 - 不接 ML / LLM / YOLO
+- 不直接依赖 ROS 2、Gazebo、RViz 或 OpenCV
 - 不直接控制 Nav2
 - 不提供底盘级或真实机器人高频闭环控制
 - 不做多机器人调度或复杂 WMS 逻辑
@@ -49,6 +51,7 @@ backend/
 │   └── services/
 │       ├── __init__.py
 │       ├── amr_http_service.py
+│       ├── mjpeg_stream_proxy.py
 │       ├── mqtt_motor_command.py
 │       ├── mqtt_robot_status.py
 │       ├── mock_data_service.py
@@ -94,6 +97,7 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 curl --noproxy '*' http://127.0.0.1:9000/api/device-status
 curl --noproxy '*' http://127.0.0.1:9000/api/alerts
 curl --noproxy '*' http://127.0.0.1:9000/api/robot/status
+curl --noproxy '*' http://127.0.0.1:9000/api/sim/preview
 ```
 
 启动后默认访问地址：
@@ -147,6 +151,29 @@ curl --noproxy '*' http://127.0.0.1:9000/api/tasks
 ```
 
 `/api/tasks` 在 `amr_http` 模式下会请求上游 `http://127.0.0.1:8000/tasks`，并将原始任务映射为 Dashboard Task 契约后返回。
+
+### Gazebo / path preview MJPEG stream
+
+Dashboard backend 可以代理 AMR / Gazebo / RViz 侧已暴露的 MJPEG HTTP stream，但不直接启动 ROS 2、Gazebo 或图像处理节点。
+
+```bash
+source .venv/bin/activate
+export SIM_PREVIEW_MJPEG_URL=http://127.0.0.1:8080/stream
+uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
+```
+
+联调验证：
+
+```bash
+curl --noproxy '*' http://127.0.0.1:9000/api/sim/preview | python3 -m json.tool
+```
+
+说明：
+
+- 未配置 `SIM_PREVIEW_MJPEG_URL` / `GAZEBO_CAMERA_MJPEG_URL` 时，`/api/sim/preview` 返回 `disconnected` 和 `stream_url: null`。
+- 配置后，`/api/sim/preview` 返回浏览器可读取的 `/api/sim/stream`。
+- `/api/sim/stream` 是只读 MJPEG 字节流代理，不发布 ROS topic，不控制 Nav2、电机或真实机器人；上游画面可以是 Gazebo 顶视图，也可以是带 path 的 RViz 视图。
+- 详细设计见 [../docs/gazebo_camera_mjpeg_stream_design.md](../docs/gazebo_camera_mjpeg_stream_design.md)。
 
 ### WMS task proxy
 
@@ -207,6 +234,8 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `GET /api/device-status`
 - `GET /api/alerts`
 - `GET /api/robot/status`
+- `GET /api/sim/preview`
+- `GET /api/sim/stream`
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`

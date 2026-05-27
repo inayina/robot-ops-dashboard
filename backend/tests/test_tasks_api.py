@@ -135,6 +135,83 @@ def test_status_websocket_route_and_message_contract():
     assert payload["imu"] is None
 
 
+def test_sim_preview_returns_mock_disconnected_status(monkeypatch):
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_MJPEG_URL", "")
+    monkeypatch.setattr(config, "SIM_CAMERA_PUBLIC_STREAM_URL", "")
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_LABEL", "Gazebo Path View")
+
+    resp = get("/api/sim/preview")
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["source"] == "mock"
+    assert body["connection"] == "disconnected"
+    assert body["stream_url"] is None
+    assert isinstance(body["last_update_at"], str)
+    assert body["label"] == "Gazebo Path View"
+
+
+def test_sim_preview_returns_stream_url_when_camera_is_configured(monkeypatch):
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_MJPEG_URL", "http://127.0.0.1:8080/stream")
+    monkeypatch.setattr(config, "SIM_CAMERA_PUBLIC_STREAM_URL", "")
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_SOURCE", "gazebo_preview")
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_LABEL", "Path Monitor")
+
+    resp = get("/api/sim/preview")
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["source"] == "gazebo_preview"
+    assert body["connection"] == "connected"
+    assert body["stream_url"] == "http://testserver/api/sim/stream"
+    assert body["label"] == "Path Monitor"
+
+
+def test_sim_preview_rejects_invalid_camera_url(monkeypatch):
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_MJPEG_URL", "file:///tmp/camera.mjpeg")
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_LABEL", "Path Monitor")
+
+    resp = get("/api/sim/preview")
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["connection"] == "disconnected"
+    assert body["stream_url"] is None
+    assert body["label"] == "Path Monitor"
+
+
+def test_sim_stream_requires_camera_url(monkeypatch):
+    monkeypatch.setattr(config, "GAZEBO_CAMERA_MJPEG_URL", "")
+
+    resp = get("/api/sim/stream")
+    body = resp.json()
+
+    assert resp.status_code == 503
+    assert body["detail"]["error_type"] == "sim_stream_proxy_error"
+    assert "SIM_PREVIEW_MJPEG_URL" in body["detail"]["detail"]
+
+
+def test_sim_stream_proxies_mjpeg_chunks(monkeypatch):
+    class FakeResponse:
+        headers = {"content-type": "multipart/x-mixed-replace; boundary=frame"}
+
+    class FakeProxy:
+        async def open_stream(self):
+            return None, None, FakeResponse()
+
+        async def iter_chunks(self, _client, _stream_context, _response):
+            yield b"--frame\r\n"
+            yield b"Content-Type: image/jpeg\r\n\r\n"
+
+    monkeypatch.setattr(main, "get_mjpeg_stream_proxy", lambda: FakeProxy())
+
+    resp = get("/api/sim/stream")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("multipart/x-mixed-replace")
+    assert resp.content == b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+
+
 def test_wms_tasks_proxy_list_with_fake_amr_response(monkeypatch):
     class FakeAmrService:
         def fetch_wms_tasks_payload(self):

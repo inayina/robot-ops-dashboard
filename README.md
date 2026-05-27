@@ -1,29 +1,56 @@
-# Robot Operations and Testing Dashboard
+# Robot Operations Dashboard
 
 ## 项目定位
 
-`robot-ops-dashboard` 定位为 **Robot Operations and Testing Dashboard**，用于承接机器人系统的上层运维、测试验证与状态监控需求。
+`robot-ops-dashboard` 是一个面向机器人系统的上层运维与测试驾驶舱，用于聚合任务流、设备状态、告警信息和本地联调入口。
 
-它不是一个单独的 AMR 业务看板，而是面向多类机器人系统、测试流程和现场设备状态的统一观察层，重点服务以下场景：
+它当前重点作为统一观察层，服务以下场景：
 
 - AMR 任务执行进度可视化
 - 设备健康与通信状态监控
 - 测试验证过程留痕与结果汇总
 - 异常告警聚合与排障辅助
-- 后续 AI 分析结果展示与诊断建议承载
+- 后续 AI 分析结果与诊断建议展示
+
+## Portfolio Demo / 作品集主入口
+
+本仓库现在作为机器人系统集成与运维监控 Demo 的作品集主入口，用于展示三条已经设计并联调的系统数据链：
+
+1. **AMR / WMS 任务链路**：Dashboard frontend -> Dashboard backend -> AMR Mock WMS HTTP API -> Mock WMS executor -> Nav2 / Gazebo -> task status writeback。
+2. **IMU / robot state 状态链路**：STM32 + MPU6050 -> ESP32-S3 micro-ROS -> ROS 2 topics -> MQTT mirror -> Dashboard backend -> `/ws/status` -> IMU Status card。
+3. **Motor / Encoder bench 链路**：Dashboard explicit command -> `POST /api/robot/motor/cmd` -> MQTT `robot/motor/cmd` -> ESP32 motor bench -> encoder status -> MQTT `robot/motor/status` -> Dashboard。
+
+作品集提取摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
+
+当前展示口径：
+
+- Dashboard 是运维与测试驾驶舱，不是 Nav2 控制台。
+- AMR 集成边界保持在 HTTP API 层。
+- IMU / robot state 是只读状态镜像。
+- Motor bench 只提供低频、受限、显式的本地 bench 命令入口。
+- 前端保持纯 HTML / CSS / JavaScript，不引入前端框架或构建工具。
+
+## Dashboard Preview / 页面预览
+
+![Robot Ops Dashboard overview](./artifacts/screenshots/dashboard-overview-1440x900.png)
+
+更多演示截图：
+
+- [Task Dispatch 画面](./artifacts/screenshots/dashboard-task-dispatch-1440x900.png)
+- [1366x768 录屏构图](./artifacts/screenshots/dashboard-recording-frame-1366x768.png)
 
 ## Related Repositories / 项目入口
 
 - Main demo portal: [robot-ops-dashboard](./)
-  统一展示入口，负责任务创建、状态监控、WebSocket 推送、IMU / Motor / Event Stream 可视化。
+  当前仓库，提供统一展示入口，承责任务创建、状态监控、WebSocket 推送、IMU / Motor / Event Stream 可视化。
 - AMR navigation core: [amr_warehouse_navigation](https://github.com/inayina/amr_warehouse_navigation)
-  基于 ROS 2 Jazzy + Gazebo Harmonic + Nav2 + Mock WMS，负责固定任务点、任务创建 / 查询 / 执行、导航执行和状态回写。
+  基于 ROS 2 Jazzy + Gazebo Harmonic + Nav2 + Mock WMS，负责固定任务点、任务查询 / 创建 / 执行、导航执行和状态回写。
 - Embedded digital twin core: [ros2-robot-digital-twin](https://github.com/inayina/ros2-robot-digital-twin)
-  基于 STM32 + ESP32-S3 + micro-ROS + ROS 2 + MQTT，负责 IMU 状态、robot state、电机状态与 dashboard 联调链路。
+  基于 STM32 + ESP32-S3 + micro-ROS + ROS 2 + MQTT，负责 IMU、robot state、电机状态与 dashboard 联调链路。
 
 ## System Layered Architecture / 系统分层架构
 
-下图从 GitHub 首页视角整理当前系统的自上而下分层关系。`robot-ops-dashboard` 是主展示入口，`amr_warehouse_navigation` 和 `ros2-robot-digital-twin` 是两个核心机器人子系统。
+下图从展示入口视角梳理当前系统的自上而下分层关系。`robot-ops-dashboard` 是主展示入口，`amr_warehouse_navigation` 和 `ros2-robot-digital-twin` 是两个核心机器人子系统。
 
 ```mermaid
 flowchart TD
@@ -131,11 +158,11 @@ flowchart TD
   R7 --> H4
 ```
 
-- Frontend / Visualization Layer 负责 GitHub 首页和演示中的第一视角展示，只渲染任务、IMU、电机和事件流，不直接连接 ROS 2、MQTT 或硬件。
-- Backend / API Layer 是 dashboard 的观察层和受限控制入口，统一承接 REST、`/ws/status`、状态缓存以及低频受限 motor command。
+- Frontend / Visualization Layer 负责页面展示，只渲染任务、IMU、电机和事件流，不直接连接 ROS 2、MQTT 或硬件。
+- Backend / API Layer 是 dashboard 的观察层和受限交互入口，统一承接 REST、`/ws/status`、状态缓存以及低频受限 motor command。
 - Messaging / Integration Layer 负责把 ROS 2 状态镜像到 MQTT，并把 dashboard 发出的受限命令下传到机器人链路，是前后端与机器人子系统之间的集成层。
-- ROS 2 / Robot Software Layer 对应两个核心机器人子系统中的软件面：AMR 导航侧负责 Mock WMS task runner 和 `Nav2 NavigateToPose`，digital twin 侧负责 IMU、robot state、motor topic 链路。
-- Edge Controller Layer 当前以 ESP32-S3 为主，承担 micro-ROS bridge、motor command handling、encoder status publishing；电机控制链路不在 STM32 侧闭环完成。
+- ROS 2 / Robot Software Layer 对应两个核心机器人子系统的软件层：AMR 导航侧负责 Mock WMS task runner 和 `Nav2 NavigateToPose`，digital twin 侧负责 IMU、robot state、motor topic 链路。
+- Edge Controller Layer 当前以 ESP32-S3 为主，承担 micro-ROS bridge、motor command handling、encoder status publishing；电机控制链路不在 STM32 侧闭环。
 - Hardware / Simulation Layer 同时包含真实 bench 硬件和仿真资源：STM32 + MPU6050 提供姿态 / 状态上行，TB6612 + N20 对应电机台架，Gazebo AMR 与 SQLite Mock WMS task database 对应 AMR 演示链路。
 
 ## System Data Flow / 系统数据流
@@ -179,28 +206,19 @@ flowchart TD
   end
 ```
 
-## Current Scope / 当前边界
-
-- Dashboard frontend 不直接连接 ROS 2、Nav2 或 MQTT，所有页面状态都通过 Dashboard backend 汇聚。
-- Dashboard backend 是上层观察层和受限控制入口，负责 HTTP adapter、状态缓存、WebSocket 推送和受限命令转发。
-- AMR 仓库当前只做固定任务点、Mock WMS、Nav2 执行和状态回写。
-- Digital twin 仓库当前负责 IMU、robot state、motor status / motor cmd 的 micro-ROS / MQTT 链路。
-- 当前 motor command 是 single N20 motor bench / demo 用的低频受限命令链路，不是完整底盘安全控制系统，也不是 ros2_control。
-- 当前不包含完整 WMS、多机器人调度、商业订单系统、权限系统、AI 诊断闭环。
-
 ## 当前阶段
 
-当前仓库主线仍然是 monitoring-first，但当前代码已经不止只读展示。
+当前仓库主线仍然是 monitoring-first，但已经包含少量显式交互能力。
 
-当前建议直接按以下口径理解本仓库：
+建议按以下口径理解本仓库：
 
-- Dashboard 是观察与监控层，不是机器人控制器
+- Dashboard 是观察、监控与本地联调入口
 - 前端保持纯 HTML / CSS / JavaScript
 - Backend 通过 HTTP adapter 读取 AMR API，不直接依赖 ROS 2、Nav2 或 Gazebo
-- IMU、robot state 与设备遥测链路保持只读镜像；电机 bench 命令走显式受限接口
+- IMU、robot state 与设备遥测链路保持只读镜像；电机 bench 命令只走显式受限接口
 - 集成配置通过环境变量管理，例如 `ROBOT_OPS_TASK_SOURCE`、`AMR_API_BASE_URL`、`MQTT_BROKER_URL`
 - 网络失败、上游不可用或 broker 断开时，前端需要明确显示 `disconnected` 或错误状态
-- 所有会影响上游或下游行为的能力都必须通过显式 HTTP 接口触发，不能有隐藏副作用
+- 所有会影响上游或下游行为的动作都必须通过显式 HTTP 接口触发，不能引入隐藏副作用
 
 当前代码已实现的主要能力：
 
@@ -209,6 +227,8 @@ flowchart TD
 - `GET /api/device-status`
 - `GET /api/alerts`
 - `GET /api/robot/status`
+- `GET /api/sim/preview`
+- `GET /api/sim/stream`
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`
@@ -219,36 +239,48 @@ flowchart TD
 
 - `/api/tasks` 用于读取 Dashboard 统一任务视图，可切换 `mock_json` 或 `amr_http`
 - `/api/robot/status` 只返回 backend 内存中的 MQTT 最新缓存；broker 不可用时返回 `disconnected` 状态
+- `/api/sim/preview` 默认返回 Gazebo 路径预览的 mock 连接状态；配置 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL` 后会返回 `/api/sim/stream`
+- `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流，不依赖 ROS 2、Gazebo、RViz、OpenCV 或系统桌面环境
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy，支持任务查询与创建
 - `/api/robot/motor/cmd` 会把前端命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制
 - `/ws/status` 向前端推送任务、设备、IMU 和电机状态快照
 - 前端实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream`
 
-## 当前交互边界
-
-当前代码确实已经提供显式交互能力，但边界仍然受限：
-
-- 支持通过 `POST /api/wms/tasks` 创建上游 Mock WMS task
-- 支持通过 `POST /api/robot/motor/cmd` 发布低频电机命令
-- 不提供 Nav2 控制能力
-- 不提供底盘级或多机器人调度能力
-- 不把 frontend 直接接到 ROS 2 或 MQTT
-- 不把 Dashboard 扩展为高频闭环控制器
-
-更完整的当前口径见 [docs/current_scope.md](/home/ina/workspace/robot-ops-dashboard/docs/current_scope.md)。
-
 ## 第一阶段优先级
 
-当前首要目标仍然是把 AMR 任务流、任务状态、设备状态和基础告警链路稳定为可观察、可演示、可验证的监控链路。
+当前首要目标是把 AMR 任务流、任务状态、设备状态和基础告警链路稳定为可观察、可演示、可验证的监控链路。
 
 后续扩展方向仍保留为：
 
 - 扩展 `ros2-robot-digital-twin` 项目的 MQTT / micro-ROS 下位机状态数据映射
 - 引入机器学习异常分类、LLM 诊断建议、YOLO 视觉检测结果展示
 
-## Frontend Live Demo
+## Demo Artifacts / 演示素材
 
-本节记录当前代码已实现的本地演示路径，包含状态监控、Mock WMS task 创建和受限电机控制。
+作品集素材统一放在 `artifacts/` 下：
+
+- [artifacts/screenshots](./artifacts/screenshots/)：Dashboard 总览、任务下发、IMU 状态、Motor / Encoder bench、断连状态截图。
+- [artifacts/videos](./artifacts/videos/)：60-90 秒演示录屏和最终剪辑版本。
+- [artifacts/reports](./artifacts/reports/)：录屏前彩排、HTTP API 验证、MQTT topic 采样和测试报告。
+
+基于已有 Playwright 的素材采集命令：
+
+```bash
+npm run capture:screenshots
+npm run capture:video
+```
+
+默认采集脚本只做页面截图和只读录屏，不会创建 WMS task，也不会下发 motor command。需要录制完整交互时显式开启：
+
+```bash
+node scripts/capture_dashboard_artifacts.js --dispatch --motor-demo --record-ms 75000
+```
+
+录屏前建议先完成 [docs/recording_rehearsal_checklist.md](./docs/recording_rehearsal_checklist.md)，再按 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md) 录制最终版本。
+
+## Frontend Live Demo / 本地演示入口
+
+本节记录当前代码已实现的本地演示路径，覆盖状态监控、Mock WMS task 创建和受限电机控制。
 
 联调时最容易混淆的是端口角色。当前默认口径固定如下：
 
@@ -277,6 +309,8 @@ V0.2 前端演示页支持状态监控与最小 Mock WMS 任务创建，推荐�
 source .venv/bin/activate
 export ROBOT_OPS_TASK_SOURCE=amr_http
 export AMR_API_BASE_URL=http://127.0.0.1:8000
+# 可选：AMR / Gazebo 侧已经提供了可看到路径的 MJPEG 预览流时启用
+# export SIM_PREVIEW_MJPEG_URL=http://127.0.0.1:8080/stream
 uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
 ```
 
@@ -295,8 +329,12 @@ python3 -m http.server 8001
 - Frontend 默认请求 `http://127.0.0.1:9000/api/tasks`
 - Frontend 默认连接 `ws://127.0.0.1:9000/ws/status` 接收状态流
 - Frontend 通过 `POST /api/wms/tasks` 创建 Mock WMS task，并通过 `GET /api/wms/tasks` 手动刷新 WMS 任务列表
+- Frontend 通过 `GET /api/sim/preview` 每 3 秒刷新右侧 `Simulation Preview` 小监控窗；未配置预览流时，占位画面显示 `Gazebo path view not connected`
+- 如果 backend 配置了 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL`，`/api/sim/preview` 会返回 `/api/sim/stream`，前端 `<img>` 自动切换到真实的 Gazebo / RViz 路径预览 MJPEG 画面
+- 当使用 `./scripts/start_dashboard_api_stack.sh --with-amr-visualization` 且未手工提供预览 URL 时，脚本会默认抓取本机 RViz path 视图，并把它接到这个小监控窗
 - Frontend 每 3 秒保留 HTTP 自动刷新 fallback，便于录屏时观察新任务和状态变化
 - 这是 **Mock WMS + Motor Bench demo**，不提供 Nav2 控制，但提供受限的 dashboard -> backend -> MQTT 电机命令联调入口
+- Simulation Preview 接入设计见 [docs/gazebo_camera_mjpeg_stream_design.md](./docs/gazebo_camera_mjpeg_stream_design.md)。Dashboard 不直接嵌入 RViz，不做 noVNC，不做 WebRTC。
 
 ### 一键启动本地 API 和页面
 
@@ -304,6 +342,13 @@ python3 -m http.server 8001
 
 ```bash
 ./scripts/start_dashboard_api_stack.sh
+```
+
+如果已经有 Gazebo / AMR 侧的 MJPEG HTTP URL，也可以直接把它带进启动脚本：
+
+```bash
+./scripts/start_dashboard_api_stack.sh \
+  --sim-preview-url "http://127.0.0.1:8080/stream"
 ```
 
 它会启动或复用：
@@ -314,6 +359,7 @@ python3 -m http.server 8001
 
 这个脚本不会调用 AMR visual demo，不会自动创建或执行任务。
 如果 9000 端口已有 Dashboard backend，但当前 mode 不是 `amr_http`，或 `/api/tasks` 的 `source` 不匹配当前 `AMR_API_BASE_URL`，脚本会直接报错，避免页面误读旧数据源。
+如果你传了 `--sim-preview-url`，或环境变量 `SIM_PREVIEW_MJPEG_URL` / `GAZEBO_CAMERA_MJPEG_URL`，脚本还会校验当前 backend 的 `Simulation Preview` 配置是否一致，避免复用到没带预览配置的旧服务。
 
 如果希望在 Dashboard 页面创建任务后，能在 AMR 仓库的 Gazebo/RViz 可视化里看到执行过程，请使用：
 
@@ -325,7 +371,11 @@ python3 -m http.server 8001
 
 - AMR `navigation.launch.py`
 - Gazebo / RViz 可视化
+- 本地 `RViz -> MJPEG` 路径预览桥接
 - AMR HTTP executor loop
+
+如果你没有手工传 `--sim-preview-url`，这个模式会默认起一个本地 MJPEG 服务，抓取 RViz 中带 path 的导航视图，并自动接到 Dashboard 右侧 `Simulation Preview`。
+为避免某些 OpenGL / RViz 窗口在 `x11grab` 下出现黑帧，本地 `window` 模式默认走 X11 `xwd` 截图再转 MJPEG。
 
 然后你在 Dashboard 页面创建 Mock WMS task 后，executor 会通过 `AMR_API_BASE_URL/tasks` 轮询并消费 pending task，向 Nav2 发送 `NavigateToPose`。它不会自动创建任务，任务仍然由页面或 curl 创建。
 
@@ -387,7 +437,28 @@ python3 -m http.server 8001
 curl --noproxy '*' http://127.0.0.1:9000/api/wms/tasks | python3 -m json.tool
 ```
 
-6. 也可以直接通过 Dashboard backend 创建任务：
+6. 验证 Simulation Preview 状态：
+
+```bash
+curl --noproxy '*' http://127.0.0.1:9000/api/sim/preview | python3 -m json.tool
+```
+
+如需让小监控窗看到 Gazebo / RViz 中的小车路径，先在 AMR / Gazebo 侧准备一个能看到路线、位姿或 path 的 MJPEG 预览流，然后启动 Dashboard backend 时设置：
+
+```bash
+export SIM_PREVIEW_MJPEG_URL=http://127.0.0.1:8080/stream
+```
+
+此后 `/api/sim/preview` 会返回 `stream_url`，浏览器会自动从 placeholder 切换到 `/api/sim/stream`。如果上游断开，前端回退为 `disconnected` 占位状态；上游恢复后，前端会在后续轮询里自动重试同一条 stream URL。
+
+注意：
+
+- Dashboard 只消费最终的 HTTP MJPEG URL，不负责生成 Gazebo / RViz 预览画面。
+- 上游可以提供 Gazebo 顶视图、RViz 中带 path 的 map 视图，或其他能清楚看到小车路径的 MJPEG 流。
+- 如果你直接使用 `./scripts/start_dashboard_api_stack.sh --with-amr-visualization`，本仓库会优先尝试自动抓取本机 RViz path 视图，不必额外准备上游 MJPEG 服务。
+- 当前如果仿真侧没有合适的预览源，就需要先在上游仓库补一个可见路径的 MJPEG 输出，再把 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL` 配到本仓库。
+
+7. 也可以直接通过 Dashboard backend 创建任务：
 
 ```bash
 curl --noproxy '*' \
@@ -487,7 +558,7 @@ STM32 + MPU6050
   -> Frontend
 ```
 
-边界说明：
+链路说明：
 
 - micro-ROS 是下位机数据进入 ROS 2 的主链路。
 - MQTT 只是 PC 端把 ROS 2 IMU topic 低频镜像到 Dashboard 的展示链路。
@@ -706,22 +777,16 @@ DASHBOARD_API_BASE_URL=http://127.0.0.1:9000 \
 - 不控制 Nav2，不控制电机，不启动浏览器
 - 前端展示是否正常仍由人工打开 `http://127.0.0.1:8001/frontend/` 确认
 
-## 项目边界
+## 项目说明
 
-本仓库负责的是“观察、聚合、解释、展示”，并提供最小 Mock WMS 任务创建 proxy 与受限电机 bench 命令入口，不直接承担底盘级底层控制职责。
+本仓库负责把 AMR Mock WMS、设备遥测、事件流和本地 bench 联调入口汇聚到一个轻量 Dashboard 中，方便本地开发、演示录屏和测试验证。
 
-当前代码还提供一条受限的电机控制入口：`POST /api/robot/motor/cmd`。该能力通过 backend 发布低频 MQTT 命令，适合本地 bench / dashboard 联调，但不等同于完整机器人控制平面。
+当前代码提供两类显式交互能力：
 
-明确不做的事情：
+- `POST /api/wms/tasks`：通过 Dashboard backend 创建上游 Mock WMS task
+- `POST /api/robot/motor/cmd`：通过 backend 发布低频 MQTT 电机 bench 命令
 
-- 不直接控制 Nav2
-- 不提供底盘级或执行器级高频闭环控制
-- 不通过 MQTT 下发导航任务
-- 不做多机器人调度
-- 不承担完整 WMS 职责
-- 不承担完整 AI 平台职责
-
-换句话说，这个仓库更像一个“机器人系统运维与测试驾驶舱”，而不是导航控制器、机器人固件平台或完整业务中台。
+更完整的当前说明见 [docs/current_scope.md](./docs/current_scope.md)。
 
 ## 预期能力
 

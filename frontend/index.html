@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Robot Ops Cockpit</title>
-    <link rel="stylesheet" href="./styles.css?v=20260526-no-scroll-fit" />
+    <title>Robot Ops Dashboard</title>
+    <link rel="stylesheet" href="./styles.css?v=20260526-recording-cockpit" />
   </head>
   <body>
     <div id="app" class="cockpit-shell dashboard-shell">
@@ -12,8 +12,8 @@
         <div class="brand-block">
           <span class="brand-mark"></span>
           <div>
-            <p class="eyebrow">Robot Operations Cockpit</p>
-            <h1>AMR 运维驾驶舱</h1>
+            <p class="eyebrow">Mock WMS · Motor Bench · Telemetry</p>
+            <h1>Robot Ops 联调看板</h1>
           </div>
         </div>
         <div class="topbar-status">
@@ -99,11 +99,6 @@
                 <strong id="imuStatusLabel">Offline</strong>
               </div>
               <span id="imuLastUpdateAgo" class="mono">--.-s</span>
-              <span id="sensorLedNormal" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Normal</span>
-              <span id="sensorLedWarning" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Warning</span>
-              <span id="sensorLedAlarm" class="sensor-led-badge no-data"><span class="sensor-led-dot"></span>Alarm</span>
-              <span id="sensorLedCurrent" class="sensor-led-current">Current: No Data</span>
-              <span id="sensorLedLastUpdate" class="mono">--:--:--</span>
               <span id="imuStateValue" class="mono">offline</span>
               <span id="imuTemperatureValue" class="mono">-</span>
               <span id="motorStateValue" class="mono">offline</span>
@@ -111,54 +106,30 @@
             </div>
           </section>
 
-          <section class="cockpit-card basic-card">
+          <section class="cockpit-card log-dock event-card">
+            <div class="log-head">
+              <div>
+                <p class="section-kicker">Event Log</p>
+                <h2>最近事件</h2>
+              </div>
+              <p id="eventStreamMeta" class="compact-meta">latest 8 status events</p>
+            </div>
+            <ol id="eventStreamList" class="event-stream-list card-body" aria-live="polite"></ol>
+          </section>
+
+          <section class="cockpit-card safety-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">Robot Info</p>
-                <h2>基础信息</h2>
+                <p class="section-kicker">Safety</p>
+                <h2>安全急停</h2>
               </div>
             </div>
-            <div class="kv-list info-scroll card-body">
-              <div>
-                <span>Robot ID</span>
-                <strong id="robotInfoId" class="mono">-</strong>
-              </div>
-              <div>
-                <span>Firmware</span>
-                <strong id="robotInfoFirmware" class="mono">-</strong>
-              </div>
-              <div>
-                <span>Runtime</span>
-                <strong id="robotInfoRuntime" class="mono">-</strong>
-              </div>
-              <div>
-                <span>IP</span>
-                <strong id="robotInfoIp" class="mono">-</strong>
-              </div>
-              <div>
-                <span>ROS Topic</span>
-                <strong id="imuRosTopic" class="mono">-</strong>
-              </div>
-              <div>
-                <span>MQTT Topic</span>
-                <strong id="robotInfoMqttTopic" class="mono">robot/imu | robot/motor/status</strong>
-              </div>
-            </div>
-            <div class="basic-card-footer card-footer">
-              <div class="wide-readout">
-                <span>Source</span>
-                <strong id="systemSource" class="mono">source: -</strong>
-              </div>
-              <p id="imuErrorNote" class="error-line"></p>
-            </div>
-            <div class="hidden-diagnostics" aria-hidden="true">
-              <span id="imuSource" class="mono">-</span>
-              <span id="imuMqttTopic">robot/imu</span>
-              <span id="motorMqttTopic">robot/motor/status</span>
-              <span id="imuLastMessageAt">-</span>
-              <span id="motorLastMessageAt">-</span>
+            <div class="card-body safety-body">
+              <button id="motorStopButton" class="estop-button" type="button">STOP</button>
+              <p id="safetyStatusValue" class="compact-meta">Safety: standby</p>
             </div>
           </section>
+
         </aside>
 
         <section class="cockpit-column center-column">
@@ -168,7 +139,15 @@
                 <p class="section-kicker">Attitude</p>
                 <h2>IMU 姿态展示</h2>
               </div>
-              <p id="imuMeta" class="compact-meta"></p>
+              <div class="attitude-head-status">
+                <div class="rms-leds-compact" aria-label="RMS sensor status">
+                  <span>RMS</span>
+                  <span id="sensorLedNormal" class="sensor-led-badge no-data" title="RMS Normal"><span class="sensor-led-dot"></span>Normal</span>
+                  <span id="sensorLedWarning" class="sensor-led-badge no-data" title="RMS Warning"><span class="sensor-led-dot"></span>Warning</span>
+                  <span id="sensorLedAlarm" class="sensor-led-badge no-data" title="RMS Alarm"><span class="sensor-led-dot"></span>Alarm</span>
+                </div>
+                <p id="imuMeta" class="compact-meta"></p>
+              </div>
             </div>
             <div class="card-body attitude-card-body">
               <div class="attitude-layout">
@@ -220,25 +199,69 @@
                 </div>
               </div>
             </div>
-            <div class="imu-metrics card-footer">
-              <div class="imu-metric-row"><span>accel x/y/z</span><strong id="imuAccelValue" class="mono">- / - / -</strong></div>
-              <div class="imu-metric-row"><span>gyro x/y/z</span><strong id="imuGyroValue" class="mono">- / - / -</strong></div>
+            <div class="imu-footer card-footer">
+              <div class="imu-metrics">
+                <div class="imu-metric-row"><span>accel x/y/z</span><strong id="imuAccelValue" class="mono">- / - / -</strong></div>
+                <div class="imu-metric-row"><span>gyro x/y/z</span><strong id="imuGyroValue" class="mono">- / - / -</strong></div>
+              </div>
+            </div>
+            <div class="hidden-diagnostics" aria-hidden="true">
+              <span id="sensorLedCurrent">Current: No Data</span>
+              <span id="sensorLedLastUpdate" class="mono">--:--:--</span>
             </div>
           </section>
 
-          <section class="flow-strip-card">
-            <div class="flow-chain" aria-label="Core data flow chain">
-              <span id="pipelineEsp32" data-state="unknown">ESP32</span>
-              <span class="flow-arrow">→</span>
-              <span id="pipelineMicroRos" data-state="unknown">micro-ROS</span>
-              <span class="flow-arrow">→</span>
-              <span id="pipelineRos" data-state="unknown">ROS 2</span>
-              <span class="flow-arrow">→</span>
-              <span id="pipelineMqtt" data-state="unknown">MQTT</span>
-              <span class="flow-arrow">→</span>
-              <span id="pipelineBackend" data-state="unknown">Backend</span>
-              <span class="flow-arrow">→</span>
-              <span id="pipelineFrontend" data-state="online">Frontend</span>
+          <section class="flow-strip-card data-flow-card">
+            <div class="flow-lanes" aria-label="Robot Ops data flows">
+              <article class="flow-lane one-way">
+                <div class="flow-lane-head">
+                  <strong>单向遥测</strong>
+                  <span>READ ONLY</span>
+                </div>
+                <div class="flow-chain">
+                  <span id="pipelineEsp32" data-state="unknown">ESP32</span>
+                  <span class="flow-arrow">→</span>
+                  <span id="pipelineMicroRos" data-state="unknown">micro-ROS</span>
+                  <span class="flow-arrow">→</span>
+                  <span id="pipelineRos" data-state="unknown">ROS 2</span>
+                  <span class="flow-arrow">→</span>
+                  <span id="pipelineMqtt" data-state="unknown">MQTT</span>
+                  <span class="flow-arrow">→</span>
+                  <span id="pipelineBackend" data-state="unknown">Backend</span>
+                  <span class="flow-arrow">→</span>
+                  <span id="pipelineFrontend" data-state="online">Frontend</span>
+                </div>
+              </article>
+              <article class="flow-lane two-way">
+                <div class="flow-lane-head">
+                  <strong>任务 HTTP</strong>
+                  <span>READ / CREATE</span>
+                </div>
+                <div class="flow-chain">
+                  <span id="pipelineTaskFrontend" data-state="online">Frontend</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineTaskBackend" data-state="unknown">Backend Proxy</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineTaskAmr" data-state="unknown">AMR Mock WMS</span>
+                </div>
+              </article>
+              <article class="flow-lane two-way">
+                <div class="flow-lane-head">
+                  <strong>Motor Bench</strong>
+                  <span>CMD / STATUS</span>
+                </div>
+                <div class="flow-chain">
+                  <span id="pipelineMotorFrontend" data-state="online">Frontend</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineMotorBackend" data-state="unknown">Backend</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineMotorMqtt" data-state="unknown">MQTT</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineMotorRos" data-state="unknown">ROS 2 Bridge</span>
+                  <span class="flow-arrow">↔</span>
+                  <span id="pipelineMotorEsp32" data-state="unknown">ESP32 Motor</span>
+                </div>
+              </article>
             </div>
             <p id="motorMeta" class="compact-meta">waiting for robot/motor/status</p>
             <div class="hidden-diagnostics" aria-hidden="true">
@@ -261,24 +284,46 @@
             </div>
           </section>
 
-          <section class="cockpit-card trend-card">
+          <section class="cockpit-card trend-card motor-flow-card cmd-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">Motor Trend</p>
-                <h2>速度 / PWM 曲线</h2>
+                <p class="section-kicker">Motor Bench Flow</p>
+                <h2>速度控制 / 电机曲线</h2>
               </div>
               <span id="motorTrendSampleCount" class="mono">0/60 samples</span>
+              <span id="motorStatusDot" class="status-dot offline"></span>
             </div>
-            <div class="trend-canvas-wrap card-body">
-              <canvas id="motorTrendCanvas" class="motor-trend-canvas" width="760" height="260"></canvas>
-              <span id="motorTrendPlaceholder" class="empty-hint">等待电机数据</span>
+            <div class="motor-flow-layout card-body">
+              <div class="trend-canvas-wrap">
+                <canvas id="motorTrendCanvas" class="motor-trend-canvas" width="760" height="260"></canvas>
+                <span id="motorTrendPlaceholder" class="empty-hint">等待电机数据</span>
+                <div class="motor-trend-legend" aria-label="Motor tuning trend legend">
+                  <span class="target">target_rpm</span>
+                  <span class="actual">actual_rpm</span>
+                  <span class="pwm">pwm</span>
+                  <span class="error">error_rpm</span>
+                </div>
+              </div>
+              <form id="motorCommandForm" class="motor-command-form motor-flow-controls">
+                <div class="cmd-status-row">
+                  <strong id="motorStatusLabel" class="status-label">Waiting</strong>
+                  <strong id="motorSource" class="mono">source: --</strong>
+                </div>
+                <label class="cmd-row">
+                  <span>Linear X</span>
+                  <input id="motorTargetSpeedSlider" name="target_speed_mps" type="range" min="0" max="0.25" step="0.01" value="0" />
+                  <strong id="motorTargetSpeedInputValue" class="mono">0.00 m/s</strong>
+                </label>
+                <div class="cmd-row">
+                  <span>Timeout</span>
+                  <input id="motorTimeoutInput" name="timeout_ms" type="number" step="50" min="100" value="800" />
+                  <strong id="motorTargetRpmInputValue" class="mono">0 rpm</strong>
+                </div>
+                <span id="motorDirectionInputValue" class="hidden-diagnostics">forward</span>
+                <button id="motorApplyButton" class="primary-button" type="submit">SEND CMD</button>
+              </form>
             </div>
-            <div class="motor-trend-legend card-footer" aria-label="Motor tuning trend legend">
-              <span class="target">target_rpm</span>
-              <span class="actual">actual_rpm</span>
-              <span class="pwm">pwm</span>
-              <span class="error">error_rpm</span>
-            </div>
+            <p id="motorCommandMessage" class="compact-meta card-footer">控制链路未连接，等待 backend / MQTT</p>
             <div class="hidden-diagnostics" aria-hidden="true">
               <span id="motorStateJsonValue">-</span>
               <span id="motorBenchEnabled">-</span>
@@ -294,11 +339,11 @@
         </section>
 
         <aside class="cockpit-column right-column">
-          <section class="cockpit-card task-card">
+          <section class="cockpit-card task-card task-execution-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">Current Task</p>
-                <h2>当前任务</h2>
+                <p class="section-kicker">Current Task Execution</p>
+                <h2>当前任务执行</h2>
               </div>
             </div>
             <div class="card-body task-card-body">
@@ -306,27 +351,36 @@
                 <strong id="taskCurrentId" class="status-label mono">暂无任务</strong>
                 <span id="taskCurrentStatus" class="mono">Idle</span>
               </div>
-              <div class="task-progress-inline">
-                <span id="taskCardProgress">--%</span>
-                <div class="progress-track"><div id="taskCardProgressFill" class="progress-fill" style="width: 0%"></div></div>
+              <div class="task-execution-progress">
+                <strong id="taskProgressValue" class="task-progress-value">--%</strong>
+                <div class="progress-track">
+                  <div id="taskProgressFill" class="progress-fill" style="width: 0%"></div>
+                </div>
               </div>
-            </div>
-            <div class="info-grid card-footer">
-              <div>
-                <span>Route</span>
-                <strong id="taskCurrentRoute" class="mono">-</strong>
+              <div class="info-grid task-execution-grid">
+                <div>
+                  <span>Route</span>
+                  <strong id="taskCurrentRoute" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>Robot</span>
+                  <strong id="taskCurrentRobot" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>Stage</span>
+                  <strong id="taskStageValue" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>Current Step</span>
+                  <strong id="taskStepValue" class="mono">-</strong>
+                </div>
               </div>
-              <div>
-                <span>Robot</span>
-                <strong id="taskCurrentRobot" class="mono">-</strong>
-              </div>
-              <div>
-                <span>Upstream</span>
-                <strong id="taskCurrentSource" class="mono">-</strong>
-              </div>
-              <div>
-                <span>Blocked</span>
-                <strong id="taskCurrentBlockReason" class="mono">-</strong>
+              <p id="tasksMeta" class="compact-meta">waiting for tasks</p>
+              <div class="task-counts task-execution-counts">
+                <span>Active <strong id="taskActiveCount">--</strong></span>
+                <span>Blocked <strong id="taskBlockedCount">--</strong></span>
+                <span>Completed <strong id="taskCompletedCount">--</strong></span>
+                <span>Total <strong id="taskTotalCount">--</strong></span>
               </div>
             </div>
           </section>
@@ -364,101 +418,39 @@
               </label>
               <button id="wmsSubmitButton" class="primary-button" type="submit">DISPATCH</button>
             </form>
-            <p id="wmsTaskMessage" class="compact-meta card-footer">任务列表不可用，使用本地演示选项</p>
-            <div id="wmsTasksTable" class="table-wrap compact-table"></div>
+            <p id="wmsTaskMessage" class="compact-meta card-footer">Last refresh: -- tasks</p>
           </section>
 
-          <section class="cockpit-card cmd-card">
+          <section class="cockpit-card sim-preview-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">cmd_vel</p>
-                <h2>速度控制</h2>
+                <p class="section-kicker">Gazebo / Path View</p>
+                <h2>Simulation Preview</h2>
               </div>
-              <span id="motorStatusDot" class="status-dot offline"></span>
+              <strong id="simPreviewConnection" class="sim-preview-state" data-state="disconnected">disconnected</strong>
             </div>
-            <form id="motorCommandForm" class="motor-command-form card-body">
-              <div class="cmd-status-row">
-                <strong id="motorStatusLabel" class="status-label">Waiting</strong>
-                <strong id="motorSource" class="mono">source: --</strong>
+            <div class="card-body sim-preview-body">
+              <div class="sim-preview-frame" aria-label="Simulation preview">
+                <img id="simPreviewImage" class="sim-preview-image" alt="Gazebo path preview stream" hidden />
+                <div id="simPreviewPlaceholder" class="sim-preview-placeholder">
+                  <span class="sim-preview-amr"></span>
+                  <strong>Gazebo path view not connected</strong>
+                </div>
               </div>
-              <label class="cmd-row">
-                <span>Linear X</span>
-                <input id="motorTargetSpeedSlider" name="target_speed_mps" type="range" min="0" max="0.25" step="0.01" value="0" />
-                <strong id="motorTargetSpeedInputValue" class="mono">0.00 m/s</strong>
-              </label>
-              <div class="cmd-row">
-                <span>Timeout</span>
-                <input id="motorTimeoutInput" name="timeout_ms" type="number" step="50" min="100" value="800" />
-                <strong id="motorTargetRpmInputValue" class="mono">0 rpm</strong>
-              </div>
-              <span id="motorDirectionInputValue" class="hidden-diagnostics">forward</span>
-              <button id="motorApplyButton" class="primary-button" type="submit">SEND CMD</button>
-            </form>
-            <p id="motorCommandMessage" class="compact-meta card-footer">控制链路未连接，等待 backend / MQTT</p>
+            </div>
+            <div class="sim-preview-meta card-footer">
+              <span>source <strong id="simPreviewSource">mock</strong></span>
+              <span>label <strong id="simPreviewLabel">Gazebo Path View</strong></span>
+              <span>updated <strong id="simPreviewLastUpdate">--</strong></span>
+            </div>
           </section>
 
-          <section class="cockpit-card safety-card">
-            <div class="card-head">
-              <div>
-                <p class="section-kicker">Safety</p>
-                <h2>安全急停</h2>
-              </div>
-            </div>
-            <div class="card-body safety-body">
-              <button id="motorStopButton" class="estop-button" type="button">STOP</button>
-              <p id="safetyStatusValue" class="compact-meta">Safety: standby</p>
-            </div>
-          </section>
         </aside>
       </main>
-
-      <footer class="bottom-log">
-        <section class="log-dock">
-          <div class="log-head">
-            <div>
-              <p class="section-kicker">Event Log</p>
-              <h2>最近事件</h2>
-            </div>
-            <p id="eventStreamMeta" class="compact-meta">latest 5 status events</p>
-          </div>
-          <ol id="eventStreamList" class="event-stream-list card-body" aria-live="polite"></ol>
-        </section>
-        <section class="task-dock">
-          <div class="log-head">
-            <div>
-              <p class="section-kicker">Current Task Progress</p>
-              <h2>任务进度</h2>
-            </div>
-            <strong id="taskProgressValue" class="task-progress-value">--%</strong>
-          </div>
-          <div class="info-grid progress-kv card-body">
-            <div>
-              <span>Stage</span>
-              <strong id="taskStageValue" class="mono">-</strong>
-            </div>
-            <div>
-              <span>Current Step</span>
-              <strong id="taskStepValue" class="mono">-</strong>
-            </div>
-          </div>
-          <div class="progress">
-            <div class="progress-track">
-              <div id="taskProgressFill" class="progress-fill" style="width: 0%"></div>
-            </div>
-          </div>
-          <div class="task-counts">
-            <span>Active <strong id="taskActiveCount">--</strong></span>
-            <span>Blocked <strong id="taskBlockedCount">--</strong></span>
-            <span>Completed <strong id="taskCompletedCount">--</strong></span>
-            <span>Total <strong id="taskTotalCount">--</strong></span>
-          </div>
-          <p id="tasksMeta" class="compact-meta card-footer">waiting for tasks</p>
-        </section>
-      </footer>
 
       <div id="summaryGrid" class="summary-grid hidden-diagnostics" aria-hidden="true"></div>
     </div>
 
-    <script src="./app.js?v=20260526-no-scroll-fit"></script>
+    <script src="./app.js?v=20260527-sim-preview-path-view"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 # 当前仓库范围说明
 
-更新时间：`2026-05-24`
+更新时间：`2026-05-26`
 
 ## 1. 当前默认口径
 
@@ -13,6 +13,7 @@
 - IMU、robot state 与设备遥测链路保持只读镜像；电机 bench 命令链路是显式、低频、受限交互。
 - AMR 集成边界保持在 HTTP API 层。
 - Dashboard backend 不直接依赖 ROS 2、Nav2 或 Gazebo。
+- Gazebo / RViz 路径预览只通过 HTTP MJPEG stream 代理接入，不在本仓库启动或控制 Gazebo。
 - 前端继续保持纯 HTML / CSS / JavaScript。
 - 网络失败、上游不可用或 MQTT broker 未连接时，前端必须明确显示 `disconnected` 或错误状态，不能白屏。
 - 如需影响上游或下游行为，必须通过显式 HTTP 接口触发，不能出现隐藏副作用。
@@ -26,6 +27,8 @@
 - `GET /api/device-status`
 - `GET /api/alerts`
 - `GET /api/robot/status`
+- `GET /api/sim/preview`
+- `GET /api/sim/stream`
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`
@@ -35,6 +38,8 @@
 
 - `/api/tasks` 支持 `mock_json` 与 `amr_http` 两种任务数据源。
 - `/api/robot/status` 只返回 backend 内存中的 MQTT 最新缓存。
+- `/api/sim/preview` 返回 Simulation Preview 连接状态，未配置路径预览 stream 时为 `disconnected`。
+- `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流。
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy。
 - `/api/robot/motor/cmd` 会把命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制。
 - Motor / Encoder 卡片中的 `Closed-loop tuning trend` 只在 Dashboard 前端记录最近状态样本，用于观察 `target_rpm`、`measured_rpm` / `actual_rpm`、`error_rpm` 与 `pwm/max_pwm` 的调参趋势。
@@ -47,6 +52,7 @@
 - 不提供底盘级高频闭环控制。
 - 不提供多机器人调度能力。
 - 前端不直接连接 ROS 2 或 MQTT。
+- `/api/sim/stream` 不发布 ROS topic，不控制 Nav2、电机或真实机器人。
 - motor command 更适合本地 bench / dashboard 联调，不应被表述为完整机器人控制平面。
 - Motor closed-loop tuning trend 是 dashboard 侧低频可视化，不参与实时闭环控制，也不会向 ROS 2、MQTT 或硬件写入任何新命令。
 

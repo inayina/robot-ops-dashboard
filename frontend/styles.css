@@ -1770,6 +1770,14 @@ body,
   background: rgba(2, 9, 8, 0.34);
 }
 
+.cmd-status-row strong,
+.cmd-row strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cmd-status-row {
   grid-template-columns: 88px minmax(0, 1fr);
 }
@@ -2012,5 +2020,2140 @@ body,
   .event-stream-item {
     height: 16px;
     min-height: 16px;
+  }
+}
+
+/* Recording cockpit final override */
+.dashboard-shell {
+  padding: 10px;
+  gap: 10px;
+  grid-template-rows: 54px minmax(0, 1fr) 106px;
+}
+
+.dashboard-main {
+  grid-template-columns: 310px minmax(0, 1fr) 342px;
+  gap: 10px;
+}
+
+.topbar {
+  flex-basis: 54px;
+  grid-template-columns: minmax(282px, 0.72fr) minmax(0, 1.36fr) minmax(224px, 0.56fr);
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.topbar-status,
+.topbar-right {
+  gap: 7px;
+}
+
+.topbar .status-chip {
+  min-width: 82px;
+  max-width: 116px;
+  height: 30px;
+  padding: 0 7px;
+}
+
+.topbar .status-chip strong {
+  max-width: 58px;
+}
+
+.mode-chip {
+  min-width: 108px;
+}
+
+.topbar-time {
+  flex-basis: 96px;
+  max-width: 96px;
+}
+
+.left-column,
+.center-column,
+.right-column {
+  gap: 10px;
+}
+
+.cockpit-card {
+  padding: 9px;
+  gap: 7px;
+}
+
+.card-head {
+  flex-basis: 30px;
+  min-height: 30px;
+  height: 30px;
+}
+
+.left-column .robot-card {
+  flex: 1.18 1 0;
+}
+
+.left-column .basic-card {
+  flex: 0.82 1 0;
+}
+
+.link-card-body {
+  gap: 6px;
+}
+
+.hero-readout {
+  flex-basis: 36px;
+  min-height: 36px;
+  padding: 6px 9px;
+}
+
+.status-label {
+  font-size: 1.05rem;
+}
+
+.link-grid {
+  gap: 4px;
+}
+
+.link-item {
+  min-height: 22px;
+  grid-template-columns: 78px minmax(0, 1fr) 42px;
+  gap: 7px;
+  padding: 3px 7px;
+}
+
+.compact-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.metric-tile {
+  min-height: 36px;
+  padding: 4px 5px;
+}
+
+.metric-tile strong {
+  font-size: 0.92rem;
+}
+
+.kv-list {
+  grid-template-rows: repeat(6, minmax(25px, 1fr));
+  gap: 5px;
+}
+
+.kv-list > div {
+  min-height: 25px;
+  grid-template-columns: 78px minmax(0, 1fr);
+  padding: 4px 7px;
+}
+
+.center-column .attitude-card {
+  flex-basis: 286px;
+  min-height: 260px;
+}
+
+.center-column .flow-strip-card {
+  flex-basis: 42px;
+}
+
+.center-column .trend-card {
+  flex: 1 1 190px;
+  min-height: 158px;
+}
+
+.attitude-layout {
+  grid-template-columns: minmax(190px, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+}
+
+.attitude-cube {
+  width: 124px;
+  height: 78px;
+}
+
+.attitude-cube .cube-face.top {
+  height: 44px;
+  transform: translateY(-22px) rotateX(90deg);
+}
+
+.attitude-cube .cube-face.side {
+  width: 44px;
+  transform: translateX(22px) rotateY(90deg);
+}
+
+.attitude-panel {
+  gap: 8px;
+  padding: 9px;
+}
+
+.attitude-bars {
+  gap: 8px;
+}
+
+.angle-value {
+  font-size: 1.18rem;
+}
+
+.imu-metrics {
+  flex-basis: 50px;
+  gap: 6px;
+}
+
+.trend-canvas-wrap,
+.motor-trend-canvas {
+  min-height: 132px;
+}
+
+.right-column .task-card {
+  flex-basis: 112px;
+}
+
+.right-column .dispatch-card {
+  flex-basis: 176px;
+  min-height: 168px;
+}
+
+.right-column .cmd-card {
+  flex-basis: 214px;
+  min-height: 204px;
+}
+
+.right-column .safety-card {
+  flex-basis: 96px;
+  min-height: 90px;
+}
+
+.task-card .info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.task-card .info-grid > div {
+  min-height: 24px;
+  padding: 3px 6px;
+}
+
+.task-card .info-grid span,
+.task-card .info-grid strong {
+  font-size: 0.62rem;
+}
+
+.wms-form {
+  grid-auto-rows: 29px;
+}
+
+.wms-form label {
+  height: 29px;
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+
+.wms-form input,
+.wms-form select {
+  min-height: 29px;
+  height: 29px;
+}
+
+.wms-form .primary-button {
+  height: 31px;
+  min-height: 31px;
+}
+
+.cmd-card .card-head {
+  flex-basis: 28px;
+  height: 28px;
+  min-height: 28px;
+}
+
+.motor-command-form {
+  gap: 7px;
+}
+
+.cmd-status-row,
+.cmd-row {
+  height: 30px;
+  min-height: 30px;
+  grid-template-columns: 78px minmax(0, 1fr) 82px;
+}
+
+.cmd-status-row {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
+.cmd-row input[type="number"] {
+  height: 27px;
+  min-height: 27px;
+}
+
+.cmd-card .primary-button {
+  height: 32px;
+  min-height: 32px;
+  flex-basis: 32px;
+}
+
+.estop-button {
+  flex-basis: 44px;
+  min-height: 44px;
+  height: 44px;
+}
+
+.bottom-log {
+  grid-template-columns: minmax(0, 0.58fr) minmax(0, 0.42fr);
+  gap: 10px;
+  padding: 9px;
+}
+
+.log-dock,
+.task-dock {
+  gap: 6px;
+}
+
+.log-head,
+.task-dock .log-head {
+  flex-basis: 28px;
+  height: 28px;
+}
+
+.event-stream-list {
+  gap: 4px;
+}
+
+.event-stream-item {
+  height: 17px;
+  min-height: 17px;
+}
+
+.event-stream-body {
+  grid-template-columns: 168px minmax(0, 1fr) 82px;
+}
+
+.event-stream-body strong,
+.event-stream-body p,
+.event-stream-body .stable-date {
+  line-height: 17px;
+}
+
+.progress-kv {
+  flex-basis: 30px;
+}
+
+.progress-kv > div {
+  min-height: 30px;
+}
+
+.task-counts {
+  flex-basis: 20px;
+}
+
+.task-counts span {
+  height: 20px;
+}
+
+@media (max-height: 800px) {
+  .dashboard-shell {
+    padding: 8px;
+    gap: 8px;
+    grid-template-rows: 50px minmax(0, 1fr) 92px;
+  }
+
+  .dashboard-main {
+    grid-template-columns: 300px minmax(0, 1fr) 334px;
+    gap: 8px;
+  }
+
+  .left-column,
+  .center-column,
+  .right-column {
+    gap: 8px;
+  }
+
+  .cockpit-card {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .topbar {
+    flex-basis: 52px;
+    grid-template-columns: minmax(274px, 0.72fr) minmax(0, 1.36fr) minmax(210px, 0.56fr);
+    gap: 8px;
+  }
+
+  .center-column .attitude-card {
+    flex-basis: 266px;
+    min-height: 246px;
+  }
+
+  .center-column .flow-strip-card {
+    flex-basis: 40px;
+  }
+
+  .trend-canvas-wrap,
+  .motor-trend-canvas {
+    min-height: 116px;
+  }
+
+  .right-column .task-card {
+    flex-basis: 92px;
+  }
+
+  .right-column .dispatch-card {
+    flex-basis: 176px;
+    min-height: 168px;
+  }
+
+  .right-column .cmd-card {
+    flex-basis: 214px;
+    min-height: 204px;
+  }
+
+  .right-column .safety-card {
+    flex-basis: 88px;
+    min-height: 84px;
+  }
+
+  .task-card .info-grid {
+    display: none;
+  }
+
+  .cmd-card .card-footer,
+  .task-dock > .card-footer {
+    display: none;
+  }
+
+  .cmd-row,
+  .cmd-status-row {
+    height: 28px;
+    min-height: 28px;
+  }
+
+  .event-stream-item {
+    height: 16px;
+    min-height: 16px;
+  }
+
+  .event-stream-body strong,
+  .event-stream-body p,
+  .event-stream-body .stable-date {
+    line-height: 16px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .dashboard-main {
+    grid-template-columns: 330px minmax(0, 1fr) 372px;
+  }
+
+  .center-column .attitude-card {
+    flex-basis: 310px;
+  }
+
+  .attitude-layout {
+    grid-template-columns: minmax(240px, 0.95fr) minmax(0, 1.05fr);
+  }
+
+  .attitude-cube {
+    width: 148px;
+    height: 92px;
+  }
+}
+
+/* Three data-flow cockpit lanes */
+.center-column .attitude-card {
+  flex-basis: 268px;
+  min-height: 246px;
+}
+
+.center-column .data-flow-card {
+  flex: 0 0 160px;
+  min-height: 148px;
+}
+
+.center-column .trend-card {
+  flex: 1 1 170px;
+  min-height: 136px;
+}
+
+.data-flow-card {
+  padding: 8px;
+}
+
+.flow-lanes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.flow-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(120, 255, 207, 0.12);
+  border-radius: 6px;
+  background: rgba(2, 9, 8, 0.36);
+  overflow: hidden;
+}
+
+.flow-lane.one-way {
+  border-left: 3px solid var(--blue);
+}
+
+.flow-lane.two-way {
+  border-left: 3px solid var(--accent);
+}
+
+.flow-lane-head {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.flow-lane-head strong,
+.flow-lane-head span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-lane-head strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+
+.flow-lane-head span {
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.flow-lane .flow-chain {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.flow-lane .flow-chain span {
+  max-width: none;
+  height: 22px;
+  padding: 3px 7px;
+  font-size: 0.66rem;
+}
+
+.flow-lane .flow-chain span:not(.flow-arrow) {
+  flex: 0 1 auto;
+}
+
+.flow-lane .flow-arrow {
+  flex: 0 0 auto;
+  min-width: 14px;
+  text-align: center;
+}
+
+.data-flow-card #motorMeta {
+  flex: 0 0 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: right;
+}
+
+@media (max-height: 800px) {
+  .center-column .attitude-card {
+    flex-basis: 250px;
+    min-height: 234px;
+  }
+
+  .center-column .data-flow-card {
+    flex-basis: 156px;
+    min-height: 146px;
+  }
+
+  .center-column .trend-card {
+    flex: 1 1 156px;
+    min-height: 112px;
+  }
+
+  .flow-lane {
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 6px;
+    padding: 4px 7px;
+  }
+
+  .flow-lane-head strong {
+    font-size: 0.76rem;
+  }
+
+  .flow-lane .flow-chain span {
+    height: 20px;
+    padding: 2px 6px;
+    font-size: 0.62rem;
+  }
+
+  .flow-lanes {
+    gap: 5px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .center-column .attitude-card {
+    flex-basis: 288px;
+  }
+
+  .center-column .data-flow-card {
+    flex-basis: 154px;
+  }
+
+  .center-column .trend-card {
+    min-height: 190px;
+  }
+
+  .flow-lane {
+    grid-template-columns: 130px minmax(0, 1fr);
+  }
+
+  .flow-lane .flow-chain span {
+    font-size: 0.72rem;
+  }
+}
+
+/* WMS-focused right rail */
+.dashboard-shell {
+  grid-template-rows: 54px minmax(0, 1fr) 86px;
+}
+
+.dashboard-main {
+  grid-template-columns: 300px minmax(0, 0.92fr) 414px;
+}
+
+.right-column {
+  gap: 8px;
+}
+
+.right-column .task-card {
+  flex: 0 0 124px;
+  min-height: 118px;
+}
+
+.right-column .progress-card {
+  flex: 0 0 118px;
+  min-height: 112px;
+}
+
+.right-column .dispatch-card {
+  flex: 0 0 154px;
+  min-height: 148px;
+}
+
+.right-column .cmd-card {
+  flex: 0 0 126px;
+  min-height: 120px;
+}
+
+.right-column .safety-card {
+  flex: 1 1 72px;
+  min-height: 68px;
+}
+
+.task-card .info-grid {
+  display: grid;
+}
+
+.task-card .card-footer {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.task-card .info-grid > div {
+  min-height: 28px;
+}
+
+.task-card-body {
+  flex: 0 0 58px;
+  gap: 6px;
+}
+
+.task-progress-inline {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.progress-card .log-head {
+  flex: 0 0 28px;
+  height: 28px;
+}
+
+.progress-card .progress-kv {
+  flex: 0 0 34px;
+}
+
+.progress-card .progress-kv > div {
+  min-height: 34px;
+}
+
+.progress-card .progress {
+  flex: 0 0 10px;
+}
+
+.progress-card .task-counts {
+  flex: 0 0 20px;
+}
+
+.progress-card #tasksMeta {
+  flex: 0 0 16px;
+  height: 16px;
+  line-height: 16px;
+}
+
+.bottom-log {
+  grid-template-columns: 1fr;
+}
+
+.log-dock {
+  display: grid;
+  grid-template-rows: 28px minmax(0, 1fr);
+}
+
+.event-stream-body {
+  grid-template-columns: 190px minmax(0, 1fr) 92px;
+}
+
+@media (max-height: 800px) {
+  .dashboard-shell {
+    grid-template-rows: 48px minmax(0, 1fr) 78px;
+  }
+
+  .dashboard-main {
+    grid-template-columns: 292px minmax(0, 0.9fr) 420px;
+  }
+
+  .right-column {
+    gap: 6px;
+  }
+
+  .right-column .task-card {
+    flex-basis: 96px;
+    min-height: 92px;
+  }
+
+  .right-column .progress-card {
+    flex-basis: 110px;
+    min-height: 106px;
+  }
+
+  .right-column .dispatch-card {
+    flex-basis: 138px;
+    min-height: 132px;
+  }
+
+  .right-column .cmd-card {
+    flex-basis: 176px;
+    min-height: 170px;
+  }
+
+  .right-column .safety-card {
+    flex-basis: 64px;
+    min-height: 60px;
+  }
+
+  .task-card .info-grid {
+    display: grid;
+  }
+
+  .task-card .card-footer {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .task-card .info-grid > div {
+    min-height: 24px;
+    padding: 2px 6px;
+  }
+
+  .task-card .info-grid span,
+  .task-card .info-grid strong {
+    font-size: 0.6rem;
+  }
+
+  .task-card-body {
+    flex-basis: 30px;
+    gap: 4px;
+  }
+
+  .task-card .task-progress-inline {
+    display: none;
+  }
+
+  .progress-card .log-head {
+    flex-basis: 24px;
+    height: 24px;
+  }
+
+  .progress-card .progress-kv {
+    flex-basis: 30px;
+  }
+
+  .progress-card .progress-kv > div {
+    min-height: 30px;
+  }
+
+  .progress-card .task-counts {
+    flex-basis: 18px;
+  }
+
+  .progress-card #tasksMeta,
+  .cmd-card .card-footer,
+  .motor-trend-legend {
+    display: none;
+  }
+
+  .cmd-card .card-head {
+    flex-basis: 24px;
+    height: 24px;
+    min-height: 24px;
+  }
+
+  .motor-command-form {
+    gap: 5px;
+  }
+
+  .cmd-row,
+  .cmd-status-row {
+    height: 26px;
+    min-height: 26px;
+  }
+
+  .cmd-row input[type="number"] {
+    height: 24px;
+    min-height: 24px;
+  }
+
+  .cmd-card .primary-button {
+    height: 30px;
+    min-height: 30px;
+    flex-basis: 30px;
+  }
+
+  .safety-card .card-head {
+    flex-basis: 22px;
+    height: 22px;
+    min-height: 22px;
+  }
+
+  #safetyStatusValue {
+    display: none;
+  }
+
+  .estop-button {
+    flex-basis: 32px;
+    min-height: 32px;
+    height: 32px;
+  }
+
+  .bottom-log {
+    padding: 7px 8px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .dashboard-main {
+    grid-template-columns: 330px minmax(0, 0.9fr) 500px;
+  }
+
+  .right-column .task-card {
+    flex-basis: 132px;
+  }
+
+  .right-column .progress-card {
+    flex-basis: 126px;
+  }
+
+  .right-column .dispatch-card {
+    flex-basis: 166px;
+  }
+
+  .right-column .cmd-card {
+    flex-basis: 136px;
+  }
+}
+
+/* Motor command and trend are one bidirectional data flow */
+.center-column .attitude-card {
+  flex-basis: 278px;
+}
+
+.center-column .data-flow-card {
+  flex-basis: 142px;
+  min-height: 130px;
+}
+
+.center-column .motor-flow-card {
+  flex: 1 1 220px;
+  min-height: 210px;
+}
+
+.motor-flow-card .card-head {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.motor-flow-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 232px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.motor-flow-layout .trend-canvas-wrap {
+  min-height: 0;
+}
+
+.motor-flow-layout .motor-trend-canvas {
+  min-height: 0;
+}
+
+.motor-flow-layout .motor-trend-legend {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 7px;
+  height: 20px;
+  overflow: hidden;
+}
+
+.motor-flow-controls {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(120, 255, 207, 0.12);
+  border-radius: 6px;
+  background: rgba(2, 9, 8, 0.38);
+}
+
+.motor-flow-card #motorCommandMessage {
+  flex: 0 0 18px;
+  height: 18px;
+  line-height: 18px;
+}
+
+.right-column .task-card {
+  flex-basis: 124px;
+}
+
+.right-column .progress-card {
+  flex-basis: 126px;
+}
+
+.right-column .dispatch-card {
+  flex-basis: 166px;
+}
+
+.right-column .safety-card {
+  flex: 1 1 96px;
+  min-height: 86px;
+}
+
+.imu-footer {
+  flex: 0 0 86px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 6px;
+  min-height: 0;
+}
+
+.imu-footer .imu-metrics {
+  flex: initial;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.rms-led-panel {
+  min-height: 0;
+  padding: 6px;
+  gap: 5px;
+}
+
+.rms-led-panel .sensor-leds-head {
+  min-width: 0;
+}
+
+.rms-led-panel .sensor-leds-head span,
+.rms-led-panel .sensor-leds-head strong,
+.rms-led-panel #sensorLedLastUpdate {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rms-led-panel #sensorLedLastUpdate {
+  display: block;
+  color: var(--faint);
+  font-size: 0.66rem;
+  text-align: right;
+}
+
+@media (max-height: 800px) {
+  .center-column .attitude-card {
+    flex-basis: 250px;
+    min-height: 238px;
+  }
+
+  .center-column .data-flow-card {
+    flex-basis: 126px;
+    min-height: 118px;
+  }
+
+  .center-column .motor-flow-card {
+    flex: 1 1 210px;
+    min-height: 194px;
+  }
+
+  .motor-flow-layout {
+    grid-template-columns: minmax(0, 1fr) 218px;
+    gap: 6px;
+  }
+
+  .motor-flow-controls {
+    padding: 6px;
+  }
+
+  .motor-flow-card .card-footer {
+    display: block;
+  }
+
+  .motor-flow-card .motor-trend-legend {
+    display: none;
+  }
+
+  .right-column .task-card {
+    flex-basis: 104px;
+    min-height: 100px;
+  }
+
+  .right-column .progress-card {
+    flex-basis: 116px;
+    min-height: 112px;
+  }
+
+  .right-column .dispatch-card {
+    flex-basis: 150px;
+    min-height: 144px;
+  }
+
+  .right-column .safety-card {
+    flex: 1 1 90px;
+    min-height: 78px;
+  }
+
+  .imu-footer {
+    flex-basis: 54px;
+    grid-template-columns: minmax(0, 1fr) 176px;
+    gap: 5px;
+  }
+
+  .imu-footer .imu-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .imu-footer .imu-metric-row {
+    min-height: 40px;
+    padding: 4px 6px;
+  }
+
+  .imu-footer .imu-metric-row span,
+  .imu-footer .imu-metric-row strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rms-led-panel {
+    align-content: center;
+    padding: 5px;
+    gap: 0;
+  }
+
+  .rms-led-panel .sensor-leds-head,
+  .rms-led-panel #sensorLedLastUpdate {
+    display: none;
+  }
+
+  .rms-led-panel .sensor-led-badge {
+    min-height: 18px;
+    padding: 2px 5px;
+    font-size: 0.6rem;
+  }
+}
+
+@media (min-width: 1500px) {
+  .motor-flow-layout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .imu-footer {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+}
+
+/* Compact sensor LEDs and no secondary robot-info card */
+.left-column {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.left-column .robot-card {
+  flex: 1 1 auto;
+}
+
+.attitude-head-status {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+
+.rms-leds-compact {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.rms-leds-compact > span:first-child {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.rms-leds-compact .sensor-led-badge {
+  width: 12px;
+  height: 12px;
+  min-height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  color: transparent;
+}
+
+.rms-leds-compact .sensor-led-dot {
+  width: 7px;
+  height: 7px;
+}
+
+.imu-footer {
+  flex-basis: 48px;
+  grid-template-columns: 1fr;
+}
+
+.imu-footer .imu-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-height: 800px) {
+  .attitude-head-status {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    justify-items: end;
+    gap: 8px;
+  }
+
+  .attitude-head-status .compact-meta {
+    max-width: 270px;
+  }
+
+  .imu-footer {
+    flex-basis: 44px;
+    grid-template-columns: 1fr;
+  }
+
+  .imu-footer .imu-metric-row {
+    min-height: 36px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .imu-footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Event log now lives in the former basic-info slot */
+.dashboard-shell {
+  grid-template-rows: 54px minmax(0, 1fr);
+}
+
+.left-column {
+  grid-template-rows: minmax(0, 1.18fr) minmax(0, 0.82fr);
+}
+
+.left-column .robot-card {
+  flex: 1.18 1 0;
+}
+
+.left-column .event-card {
+  flex: 0.82 1 0;
+}
+
+.event-card .event-stream-list {
+  overflow: hidden;
+}
+
+.event-card .event-stream-item {
+  min-height: 24px;
+  height: 24px;
+}
+
+.event-card .event-stream-body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.event-card .event-stream-body p {
+  display: none;
+}
+
+.event-card .event-stream-body .stable-date {
+  display: none;
+}
+
+@media (max-height: 800px) {
+  .dashboard-shell {
+    grid-template-rows: 48px minmax(0, 1fr);
+  }
+
+  .left-column {
+    grid-template-rows: minmax(0, 1.16fr) minmax(0, 0.84fr);
+  }
+
+  .event-card .event-stream-item {
+    min-height: 22px;
+    height: 22px;
+  }
+}
+
+/* Safety belongs with status/events; widen motor command lane */
+.dashboard-main {
+  grid-template-columns: 300px minmax(0, 1fr) 390px;
+}
+
+.left-column {
+  grid-template-rows: none;
+}
+
+.left-column .robot-card {
+  flex: 1.02 1 0;
+}
+
+.left-column .event-card {
+  flex: 0.74 1 0;
+}
+
+.left-column .safety-card {
+  flex: 0 0 96px;
+  min-height: 90px;
+}
+
+.right-column .task-card {
+  flex: 0 0 130px;
+}
+
+.right-column .progress-card {
+  flex: 0 0 130px;
+}
+
+.right-column .dispatch-card {
+  flex: 1 1 auto;
+  min-height: 170px;
+}
+
+.motor-flow-layout {
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.motor-flow-controls .cmd-status-row,
+.motor-flow-controls .cmd-row {
+  grid-template-columns: 78px minmax(0, 1fr) 88px;
+}
+
+.motor-flow-controls .cmd-status-row {
+  height: 42px;
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 16px 16px;
+  align-content: center;
+  gap: 2px;
+}
+
+.motor-flow-controls .cmd-status-row #motorSource {
+  font-size: 0.62rem;
+  text-align: left;
+}
+
+@media (max-height: 800px) {
+  .dashboard-main {
+    grid-template-columns: 292px minmax(0, 1fr) 386px;
+  }
+
+  .left-column .robot-card {
+    flex: 1 1 0;
+  }
+
+  .left-column .event-card {
+    flex: 0.74 1 0;
+  }
+
+  .left-column .safety-card {
+    flex: 0 0 86px;
+    min-height: 80px;
+  }
+
+  .left-column .safety-card .card-head {
+    flex-basis: 24px;
+    height: 24px;
+    min-height: 24px;
+  }
+
+  .left-column .safety-card #safetyStatusValue {
+    display: none;
+  }
+
+  .left-column .safety-card .estop-button {
+    flex-basis: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .right-column .task-card {
+    flex-basis: 112px;
+    min-height: 106px;
+  }
+
+  .right-column .progress-card {
+    flex-basis: 120px;
+    min-height: 114px;
+  }
+
+  .right-column .dispatch-card {
+    flex: 1 1 auto;
+    min-height: 168px;
+  }
+
+  .motor-flow-layout {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+
+  .motor-flow-controls .cmd-status-row,
+  .motor-flow-controls .cmd-row {
+    grid-template-columns: 76px minmax(0, 1fr) 86px;
+  }
+
+  .motor-flow-controls .cmd-status-row {
+    height: 40px;
+    min-height: 40px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 15px 15px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .dashboard-main {
+    grid-template-columns: 330px minmax(0, 1fr) 460px;
+  }
+
+  .motor-flow-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+/* Fill WMS rail whitespace with task queue context */
+.task-card .card-footer {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.right-column .task-card {
+  flex-basis: 142px;
+}
+
+.right-column .progress-card {
+  flex-basis: 132px;
+}
+
+.right-column .dispatch-card {
+  min-height: 0;
+}
+
+.dispatch-card .wms-form {
+  flex: 0 0 auto;
+}
+
+.dispatch-card .compact-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(120, 255, 207, 0.1);
+  border-radius: 6px;
+  background: rgba(2, 9, 8, 0.28);
+}
+
+.compact-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.compact-table thead {
+  display: none;
+}
+
+.compact-table tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.82fr) minmax(0, 0.82fr) minmax(0, 0.68fr);
+  align-items: center;
+  min-height: 26px;
+  border-bottom: 1px solid rgba(120, 255, 207, 0.08);
+}
+
+.compact-table tr:last-child {
+  border-bottom: 0;
+}
+
+.compact-table td,
+.compact-table th {
+  min-width: 0;
+  padding: 4px 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compact-table td:nth-child(n + 5),
+.compact-table th:nth-child(n + 5) {
+  display: none;
+}
+
+.compact-table td strong,
+.compact-table .subnote,
+.compact-table .badge {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compact-table td strong {
+  display: block;
+  color: var(--ink);
+}
+
+.compact-table .subnote {
+  margin-top: 2px;
+  color: var(--faint);
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 52px;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+@media (max-height: 800px) {
+  .right-column .task-card {
+    flex-basis: 120px;
+  }
+
+  .right-column .progress-card {
+    flex-basis: 120px;
+  }
+
+  .task-card .card-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compact-table tr {
+    min-height: 24px;
+  }
+}
+
+/* Simulation preview rail */
+.right-column .sim-preview-card {
+  flex: 0 0 238px;
+  min-height: 0;
+}
+
+.sim-preview-card .card-head {
+  flex: 0 0 42px;
+  min-height: 42px;
+}
+
+.sim-preview-state {
+  max-width: 116px;
+  padding: 4px 8px;
+  border: 1px solid rgba(120, 255, 207, 0.18);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sim-preview-state[data-state="connected"] {
+  border-color: rgba(120, 255, 207, 0.46);
+  color: var(--accent);
+}
+
+.sim-preview-state[data-state="disconnected"] {
+  border-color: rgba(255, 107, 107, 0.32);
+  color: var(--danger);
+}
+
+.sim-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 8px 10px 4px;
+}
+
+.sim-preview-frame {
+  position: relative;
+  width: min(100%, 320px);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(120, 255, 207, 0.16);
+  border-radius: 7px;
+  background: #06100f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.sim-preview-image,
+.sim-preview-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sim-preview-image {
+  object-fit: cover;
+}
+
+.sim-preview-placeholder {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 14px;
+  color: var(--muted);
+  text-align: center;
+  background:
+    linear-gradient(rgba(120, 255, 207, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 255, 207, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 50% 62%, rgba(120, 255, 207, 0.16), transparent 32%),
+    #05100f;
+  background-size: 24px 24px, 24px 24px, 100% 100%, 100% 100%;
+}
+
+.sim-preview-placeholder[hidden],
+.sim-preview-image[hidden] {
+  display: none;
+}
+
+.sim-preview-amr {
+  position: relative;
+  width: 38px;
+  height: 24px;
+  border: 2px solid rgba(120, 255, 207, 0.78);
+  border-radius: 7px;
+  background: rgba(120, 255, 207, 0.12);
+  box-shadow: 0 0 22px rgba(120, 255, 207, 0.18);
+}
+
+.sim-preview-amr::before,
+.sim-preview-amr::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(120, 255, 207, 0.92);
+}
+
+.sim-preview-amr::before {
+  left: 6px;
+}
+
+.sim-preview-amr::after {
+  right: 6px;
+}
+
+.sim-preview-placeholder strong {
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sim-preview-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 32px;
+  color: var(--faint);
+  font-size: 0.62rem;
+}
+
+.sim-preview-meta span,
+.sim-preview-meta strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sim-preview-meta strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (max-height: 800px) {
+  .right-column .sim-preview-card {
+    flex-basis: 218px;
+  }
+
+  .sim-preview-card .card-head {
+    flex-basis: 38px;
+    min-height: 38px;
+  }
+
+  .sim-preview-frame {
+    width: min(100%, 292px);
+  }
+
+  .sim-preview-meta {
+    min-height: 28px;
+  }
+}
+
+/* Consolidated WMS right rail */
+.right-column {
+  display: grid;
+  grid-template-rows: minmax(236px, 1fr) minmax(184px, 0.78fr) minmax(254px, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+
+.right-column .task-execution-card,
+.right-column .dispatch-card,
+.right-column .sim-preview-card {
+  flex: initial;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.right-column .task-execution-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-execution-card .card-head {
+  flex: 0 0 40px;
+  min-height: 40px;
+}
+
+.task-execution-card .task-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 40px 48px minmax(76px, 1fr) 16px 28px;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.task-execution-card .hero-readout {
+  min-height: 40px;
+  padding: 6px 9px;
+}
+
+.task-execution-card .hero-readout .status-label {
+  font-size: 1rem;
+}
+
+.task-execution-card .hero-readout span {
+  max-width: 116px;
+  padding: 4px 8px;
+  border: 1px solid rgba(120, 255, 207, 0.18);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.task-execution-card .hero-readout span[data-state="blocked"],
+.task-execution-card .hero-readout span[data-state="failed"],
+.task-execution-card .hero-readout span[data-state="cancelled"] {
+  border-color: rgba(255, 79, 95, 0.32);
+  color: var(--danger);
+}
+
+.task-execution-card .hero-readout span[data-state="queued"],
+.task-execution-card .hero-readout span[data-state="dispatching"] {
+  border-color: rgba(240, 184, 79, 0.28);
+  color: var(--amber);
+}
+
+.task-execution-card .hero-readout span[data-state="completed"] {
+  border-color: rgba(78, 227, 172, 0.38);
+  color: var(--accent);
+}
+
+.task-execution-progress {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.task-execution-card .task-progress-value {
+  color: var(--accent);
+  font-size: 1.65rem;
+  font-weight: 900;
+}
+
+.task-execution-card .progress-track {
+  height: 14px;
+}
+
+.task-execution-card .task-execution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(34px, 1fr));
+  gap: 7px;
+  min-height: 0;
+}
+
+.task-execution-card .task-execution-grid > div {
+  min-height: 0;
+  padding: 6px 8px;
+}
+
+.task-execution-card #tasksMeta {
+  height: 16px;
+  line-height: 16px;
+}
+
+.task-execution-counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  flex-wrap: nowrap;
+  min-height: 28px;
+}
+
+.task-execution-counts span {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 4px 5px;
+  text-align: center;
+}
+
+.task-execution-counts strong {
+  margin-left: 2px;
+}
+
+.right-column .dispatch-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.right-column .sim-preview-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.sim-preview-body {
+  padding: 6px 8px 3px;
+}
+
+.sim-preview-frame {
+  width: auto;
+  max-width: 100%;
+  height: min(100%, 191px);
+}
+
+@media (max-height: 800px) {
+  .right-column {
+    grid-template-rows: minmax(214px, 1fr) minmax(166px, 0.76fr) minmax(228px, 1fr);
+    gap: 6px;
+  }
+
+  .task-execution-card .card-head {
+    flex-basis: 34px;
+    min-height: 34px;
+  }
+
+  .task-execution-card .task-card-body {
+    grid-template-rows: 34px 38px minmax(62px, 1fr) 0 24px;
+    gap: 5px;
+  }
+
+  .task-execution-card #tasksMeta {
+    display: none;
+  }
+
+  .task-execution-card .hero-readout {
+    min-height: 34px;
+  }
+
+  .task-execution-card .task-progress-value {
+    font-size: 1.42rem;
+  }
+
+  .task-execution-card .progress-track {
+    height: 11px;
+  }
+
+  .task-execution-card .task-execution-grid {
+    grid-template-rows: repeat(2, minmax(28px, 1fr));
+    gap: 5px;
+  }
+
+  .task-execution-card .task-execution-grid > div {
+    padding: 4px 6px;
+  }
+
+  .task-execution-counts {
+    min-height: 24px;
+  }
+
+  .task-execution-counts span {
+    padding: 3px 4px;
+    font-size: 0.62rem;
+  }
+
+  .sim-preview-frame {
+    height: min(100%, 171px);
+  }
+}
+
+/* Keep center data-flow labels readable in the compact cockpit layout */
+.flow-lane .flow-chain {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Right WMS rail overflow guard: keep the three main cards visible in one screen. */
+.dashboard-shell {
+  height: 100vh;
+  grid-template-rows: 54px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.dashboard-main {
+  height: calc(100vh - 84px);
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.dashboard-main > .cockpit-column,
+.right-column {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.right-column {
+  display: grid;
+  grid-template-rows: clamp(250px, 32%, 270px) clamp(170px, 23%, 190px) minmax(210px, 1fr);
+  gap: 8px;
+}
+
+.right-column .task-execution-card,
+.right-column .dispatch-card,
+.right-column .sim-preview-card {
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.task-execution-card .card-head,
+.dispatch-card .card-head,
+.sim-preview-card .card-head {
+  flex: 0 0 28px;
+  min-height: 28px;
+  height: 28px;
+}
+
+.task-execution-card .task-card-body {
+  grid-template-rows: 34px 34px minmax(82px, 1fr) 30px;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.task-execution-card .hero-readout {
+  min-height: 0;
+  height: 34px;
+  padding: 5px 8px;
+}
+
+.task-execution-card .hero-readout .status-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.task-execution-card .hero-readout span {
+  flex: 0 0 auto;
+  max-width: 112px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-execution-card .task-execution-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(28px, 1fr));
+  gap: 5px;
+  overflow: hidden;
+}
+
+.task-execution-card .task-execution-grid > div {
+  min-height: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+}
+
+.task-execution-card .task-execution-grid span,
+.task-execution-card .task-execution-grid strong,
+.task-execution-counts span,
+.task-execution-counts strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.task-execution-card #tasksMeta {
+  display: none;
+}
+
+.task-execution-counts {
+  min-height: 30px;
+  height: 30px;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.task-execution-counts span {
+  min-height: 0;
+  height: 30px;
+  padding: 3px 4px;
+  line-height: 1;
+}
+
+.task-execution-counts strong {
+  margin-left: 2px;
+  line-height: 1;
+}
+
+.right-column .dispatch-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.dispatch-card .wms-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 28px;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.dispatch-card .wms-form label {
+  min-height: 0;
+  height: 28px;
+}
+
+.dispatch-card .wms-form input,
+.dispatch-card .wms-form select,
+.dispatch-card .wms-form .primary-button {
+  min-height: 28px;
+  height: 28px;
+}
+
+.dispatch-card #wmsTaskMessage {
+  flex: 0 0 18px;
+  height: 18px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.dispatch-card .compact-table,
+#wmsTasksTable {
+  display: none;
+}
+
+.right-column .sim-preview-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.sim-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 5px 8px 3px;
+  overflow: hidden;
+}
+
+.sim-preview-frame {
+  width: min(100%, 300px);
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.sim-preview-meta {
+  flex: 0 0 32px;
+  min-height: 32px;
+  overflow: hidden;
+}
+
+@media (max-height: 800px) {
+  .dashboard-shell {
+    grid-template-rows: 48px minmax(0, 1fr);
+  }
+
+  .dashboard-main {
+    height: calc(100vh - 78px);
+  }
+
+  .right-column {
+    grid-template-rows: 264px 170px minmax(210px, 1fr);
+    gap: 6px;
+  }
+
+  .task-execution-card .task-card-body {
+    grid-template-rows: 34px 32px minmax(82px, 1fr) 30px;
+    gap: 4px;
+  }
+
+  .task-execution-card .task-progress-value {
+    font-size: 1.36rem;
+  }
+
+  .sim-preview-frame {
+    width: min(100%, 268px);
+  }
+}
+
+.flow-lane .flow-chain span {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  padding: 3px 5px;
+  text-align: center;
+  font-size: 0.58rem;
+}
+
+.flow-lane .flow-chain span:not(.flow-arrow) {
+  flex: 0 0 auto;
+}
+
+.flow-lane .flow-chain .flow-arrow {
+  flex: 0 0 auto;
+  min-width: 10px;
+  padding: 0;
+  font-size: 0.66rem;
+}
+
+@media (max-height: 800px) {
+  .flow-lane .flow-chain {
+    gap: 2px;
+  }
+
+  .flow-lane .flow-chain span {
+    height: 20px;
+    padding: 2px 4px;
+    font-size: 0.54rem;
+  }
+
+  .flow-lane .flow-chain .flow-arrow {
+    min-width: 8px;
+    font-size: 0.62rem;
+  }
+}
+
+/* Give the center data-flow lanes more breathing room, paid for by the motor panel. */
+.center-column .data-flow-card {
+  flex: 0 0 174px;
+  min-height: 158px;
+}
+
+.center-column .motor-flow-card {
+  flex: 1 1 188px;
+  min-height: 176px;
+}
+
+.flow-lanes {
+  gap: 8px;
+}
+
+.flow-lane {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+@media (max-height: 800px) {
+  .center-column .data-flow-card {
+    flex-basis: 154px;
+    min-height: 144px;
+  }
+
+  .center-column .motor-flow-card {
+    flex: 1 1 174px;
+    min-height: 162px;
+  }
+
+  .flow-lanes {
+    gap: 6px;
+  }
+
+  .flow-lane {
+    padding-top: 5px;
+    padding-bottom: 5px;
   }
 }

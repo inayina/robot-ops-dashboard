@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from . import config
@@ -30,10 +30,12 @@ from .schemas import (
     MotorCommandResponse,
     MockEnvelope,
     RobotStatusResponse,
+    SimPreviewResponse,
     WmsTaskCreateRequest,
 )
 from .services.mock_data_service import MockDataError, MockDataService
 from .services.amr_http_service import AmrHttpService, AmrHttpError
+from .services.mjpeg_stream_proxy import MjpegStreamProxy, MjpegStreamProxyError
 from .services.mqtt_motor_command import MotorCommandPublishError, RobotMqttMotorCommandService
 from .services.mqtt_robot_status import RobotMqttStatusService
 from .services import task_mapper
@@ -142,6 +144,14 @@ def get_amr_service() -> AmrHttpService:
     return AmrHttpService(
         base_url=config.AMR_API_BASE_URL,
         timeout=config.AMR_HTTP_TIMEOUT_SECONDS,
+        trust_env=False,
+    )
+
+
+def get_mjpeg_stream_proxy() -> MjpegStreamProxy:
+    return MjpegStreamProxy(
+        upstream_url=config.GAZEBO_CAMERA_MJPEG_URL,
+        timeout_seconds=config.SIM_CAMERA_HTTP_TIMEOUT_SECONDS,
         trust_env=False,
     )
 
@@ -371,6 +381,38 @@ def build_robot_status_response() -> RobotStatusResponse:
     return RobotStatusResponse(**mqtt_status_service.build_status())
 
 
+def build_sim_preview_response(request: Request) -> SimPreviewResponse:
+    stream_proxy = get_mjpeg_stream_proxy()
+    if not stream_proxy.is_configured():
+        return SimPreviewResponse(
+            source="mock",
+            connection="disconnected",
+            stream_url=None,
+            last_update_at=utc_now_iso(),
+            label=config.GAZEBO_CAMERA_LABEL,
+        )
+
+    try:
+        stream_proxy.validate()
+    except MjpegStreamProxyError:
+        return SimPreviewResponse(
+            source=config.GAZEBO_CAMERA_SOURCE,
+            connection="disconnected",
+            stream_url=None,
+            last_update_at=utc_now_iso(),
+            label=config.GAZEBO_CAMERA_LABEL,
+        )
+
+    stream_url = config.SIM_CAMERA_PUBLIC_STREAM_URL or str(request.url_for("get_sim_stream"))
+    return SimPreviewResponse(
+        source=config.GAZEBO_CAMERA_SOURCE,
+        connection="connected",
+        stream_url=stream_url,
+        last_update_at=utc_now_iso(),
+        label=config.GAZEBO_CAMERA_LABEL,
+    )
+
+
 def extract_status_error_detail(exc: Exception) -> str:
     detail = getattr(exc, "detail", str(exc))
     if isinstance(detail, dict):
@@ -463,6 +505,32 @@ async def get_alerts() -> MockEnvelope:
 @app.get("/api/robot/status", response_model=RobotStatusResponse)
 async def get_robot_status() -> RobotStatusResponse:
     return build_robot_status_response()
+
+
+@app.get("/api/sim/preview", response_model=SimPreviewResponse)
+async def get_sim_preview(request: Request) -> SimPreviewResponse:
+    return build_sim_preview_response(request)
+
+
+@app.get("/api/sim/stream")
+async def get_sim_stream() -> StreamingResponse:
+    stream_proxy = get_mjpeg_stream_proxy()
+    try:
+        client, stream_context, upstream_response = await stream_proxy.open_stream()
+    except MjpegStreamProxyError as exc:
+        raise_api_error(
+            status_code=exc.status_code,
+            error_type="sim_stream_proxy_error",
+            detail=str(exc),
+            path=config.GAZEBO_CAMERA_MJPEG_URL or "SIM_PREVIEW_MJPEG_URL|GAZEBO_CAMERA_MJPEG_URL",
+        )
+
+    media_type = upstream_response.headers.get("content-type") or "multipart/x-mixed-replace"
+    return StreamingResponse(
+        stream_proxy.iter_chunks(client, stream_context, upstream_response),
+        media_type=media_type,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/robot/motor/cmd", response_model=MotorCommandResponse)

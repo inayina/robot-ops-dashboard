@@ -39,6 +39,14 @@ class RobotStatusResponse(BaseModel):
     robot: dict[str, Any] = Field(description="Latest normalized robot status assembled from MQTT topics.")
 
 
+class SimPreviewResponse(BaseModel):
+    source: str = Field(description="Simulation preview source type.")
+    connection: Literal["connected", "disconnected"] = Field(description="Preview stream connection state.")
+    stream_url: str | None = Field(default=None, description="Optional browser-readable preview stream URL.")
+    last_update_at: str = Field(description="Preview status generation timestamp.")
+    label: str = Field(description="Human-readable preview label.")
+
+
 class MotorCommandRequest(BaseModel):
     target_rpm: float = Field(default=0.0, description="Requested motor target RPM.")
     target_speed_mps: float | None = Field(

@@ -23,6 +23,8 @@
 - `GET /api/device-status`
 - `GET /api/alerts`
 - `GET /api/robot/status`
+- `GET /api/sim/preview`
+- `GET /api/sim/stream`
 
 当前已实现的显式交互接口：
 
@@ -44,6 +46,8 @@
 - `POST /api/robot/motor/cmd` 当前已实现，用于低频受限电机控制
 - `/ws/status` 仅用于 Dashboard Backend 向 Frontend 推送状态快照，不替代 HTTP REST API
 - `/api/robot/status` 为 MQTT 状态读取接口，只返回 backend 内存中缓存的最新消息
+- `/api/sim/preview` 返回仿真路径预览连接状态；配置 MJPEG 上游后会返回 `/api/sim/stream`
+- `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流，不直接连接 ROS 2、Gazebo、RViz、noVNC 或 WebRTC
 
 ## 3. 通用响应结构
 
@@ -209,7 +213,53 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 - 如果上游 AMR Mock WMS 不接受某个 `target_name`，Dashboard 返回上游错误。
 - 该接口不写数据库，不通过 MQTT 下发任务，不控制 Nav2 或电机。
 
-## 9. WebSocket 状态消息 DashboardStatus
+## 9. Simulation Preview
+
+`GET /api/sim/preview` 用于前端右侧 `Simulation Preview` 小监控窗。未配置路径预览 stream 时返回 mock disconnected 状态；配置 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL` 后返回 `/api/sim/stream` 给前端 `<img>` 使用。
+
+未配置时响应示例：
+
+```json
+{
+  "source": "mock",
+  "connection": "disconnected",
+  "stream_url": null,
+  "last_update_at": "2026-05-26T10:00:00+00:00",
+  "label": "Gazebo Path View"
+}
+```
+
+配置 MJPEG 上游后响应示例：
+
+```json
+{
+  "source": "gazebo_preview",
+  "connection": "connected",
+  "stream_url": "http://127.0.0.1:9000/api/sim/stream",
+  "last_update_at": "2026-05-26T10:00:00+00:00",
+  "label": "Gazebo Path View"
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `source` | string | 预览状态来源，未配置时为 `mock`，配置后默认 `gazebo_preview` |
+| `connection` | string | 当前预览连接状态：`connected` / `disconnected` |
+| `stream_url` | string\|null | 前端 `<img>` 可读取的图像流地址；未配置或配置非法时为 `null` |
+| `last_update_at` | string | Backend 生成该预览状态的时间 |
+| `label` | string | 展示标签，默认 `Gazebo Path View`；可通过环境变量覆盖 |
+
+`GET /api/sim/stream` 行为：
+
+- 未配置 `SIM_PREVIEW_MJPEG_URL` / `GAZEBO_CAMERA_MJPEG_URL` 时返回 `503 sim_stream_proxy_error`。
+- 上游 URL 非 HTTP(S)、上游连接失败或上游返回错误时，返回 `sim_stream_proxy_error`。
+- 成功时返回 `multipart/x-mixed-replace` MJPEG 字节流，并设置 `Cache-Control: no-store`。
+
+配置见 [Gazebo / Path Preview MJPEG Stream 接入设计](./gazebo_camera_mjpeg_stream_design.md)。该接口保持只读，不发布 ROS topic，不控制 Nav2、电机或真实机器人；上游画面可以是 Gazebo 顶视图，也可以是带 path 的 RViz 视图。
+
+## 10. WebSocket 状态消息 DashboardStatus
 
 `/ws/status` 当前推送如下结构。`motor` 与 `imu` 来自 MQTT 最新缓存，尚未收到对应 topic 时为 `null`：
 

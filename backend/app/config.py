@@ -34,11 +34,31 @@ def _env_flag(name: str, default: str) -> bool:
 # - DASHBOARD_WS_STATUS_INTERVAL_SECONDS: backend-to-frontend status push interval
 # - MQTT_BROKER_URL: local MQTT broker used for robot telemetry and motor bench command topics
 # - MQTT_KEEPALIVE_SECONDS: MQTT client keepalive interval
+# - SIM_PREVIEW_MJPEG_URL / GAZEBO_CAMERA_MJPEG_URL: optional upstream MJPEG URL created by the AMR/Gazebo side
 ROBOT_OPS_TASK_SOURCE = os.getenv("ROBOT_OPS_TASK_SOURCE", "mock_json")
 AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")
 MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "mqtt://127.0.0.1:1883")
 ROBOT_ID = os.getenv("ROBOT_ID", "amr-001")
 MQTT_MOTOR_CMD_TOPIC = os.getenv("MQTT_MOTOR_CMD_TOPIC", "robot/motor/cmd")
+GAZEBO_CAMERA_MJPEG_URL = os.getenv(
+    "SIM_PREVIEW_MJPEG_URL",
+    os.getenv(
+        "GAZEBO_CAMERA_MJPEG_URL",
+        os.getenv("SIM_CAMERA_MJPEG_URL", ""),
+    ),
+).strip()
+GAZEBO_CAMERA_LABEL = os.getenv(
+    "SIM_PREVIEW_LABEL",
+    os.getenv("GAZEBO_CAMERA_LABEL", "Gazebo Path View"),
+).strip() or "Gazebo Path View"
+GAZEBO_CAMERA_SOURCE = os.getenv(
+    "SIM_PREVIEW_SOURCE",
+    os.getenv("GAZEBO_CAMERA_SOURCE", "gazebo_preview"),
+).strip() or "gazebo_preview"
+SIM_CAMERA_PUBLIC_STREAM_URL = os.getenv(
+    "SIM_PREVIEW_PUBLIC_STREAM_URL",
+    os.getenv("SIM_CAMERA_PUBLIC_STREAM_URL", ""),
+).strip()
 MQTT_TOPICS = (
     "robot/state",
     "robot/imu",
@@ -55,8 +75,16 @@ try:
 except ValueError:
     MQTT_KEEPALIVE_SECONDS = 60
 
+try:
+    SIM_CAMERA_HTTP_TIMEOUT_SECONDS = float(os.getenv("SIM_CAMERA_HTTP_TIMEOUT_SECONDS", "3"))
+except ValueError:
+    SIM_CAMERA_HTTP_TIMEOUT_SECONDS = 3.0
+
 if MQTT_KEEPALIVE_SECONDS <= 0:
     MQTT_KEEPALIVE_SECONDS = 60
+
+if SIM_CAMERA_HTTP_TIMEOUT_SECONDS <= 0:
+    SIM_CAMERA_HTTP_TIMEOUT_SECONDS = 3.0
 
 try:
     MOTOR_CMD_DEFAULT_TARGET_RPM = float(os.getenv("MOTOR_CMD_DEFAULT_TARGET_RPM", "0"))
