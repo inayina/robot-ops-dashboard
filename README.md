@@ -1,8 +1,8 @@
-# Robot Operations Dashboard
+# Robot Data Link & Evaluation Dashboard
 
 ## 项目定位
 
-`robot-ops-dashboard` 是一个面向机器人系统的上层运维与测试驾驶舱，用于聚合任务流、设备状态、告警信息和本地联调入口。
+`robot-ops-dashboard` 是一个面向机器人系统的上层运维、数据链路与评测展示驾驶舱，用于聚合任务流、设备状态、告警信息、本地联调入口，以及只读的 baseline / mock evaluation 结果。
 
 它当前重点作为统一观察层，服务以下场景：
 
@@ -10,17 +10,19 @@
 - 设备健康与通信状态监控
 - 测试验证过程留痕与结果汇总
 - 异常告警聚合与排障辅助
-- 后续 AI 分析结果与诊断建议展示
+- 机器人数据链路、`run_id`、`dataset_version`、`model_version`、失败样本与 compute 状态展示
+- 后续 AI 分析结果与诊断建议展示接口预留
 
 ## Portfolio Demo / 作品集主入口
 
-本仓库现在作为机器人系统集成与运维监控 Demo 的作品集主入口，用于展示三条已经设计并联调的系统数据链：
+本仓库现在作为 **具身智能机器人数据链路与评测平台** 的作品集主入口，用于展示三条已经设计并联调的系统数据链，以及一个明确标注 mock / baseline / reserved 的只读评测展示层：
 
 1. **AMR / WMS 任务链路**：Dashboard frontend -> Dashboard backend -> AMR Mock WMS HTTP API -> Mock WMS executor -> Nav2 / Gazebo -> task status writeback。
 2. **IMU / robot state 状态链路**：STM32 + MPU6050 -> ESP32-S3 micro-ROS -> ROS 2 topics -> MQTT mirror -> Dashboard backend -> `/ws/status` -> IMU Status card。
 3. **Motor / Encoder bench 链路**：Dashboard explicit command -> `POST /api/robot/motor/cmd` -> MQTT `robot/motor/cmd` -> ESP32 motor bench -> encoder status -> MQTT `robot/motor/status` -> Dashboard。
+4. **Data & Evaluation 展示层**：mock evaluation files -> Dashboard backend `GET /api/evaluation/*` -> frontend cards，展示 `run_id`、`dataset_version`、`model_version`、任务成功率、失败样本与 GPU / compute 状态。
 
-作品集提取摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
+作品集提取摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。机器人数据链路与评测平台说明见 [docs/robot_data_evaluation_platform.md](./docs/robot_data_evaluation_platform.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
 
 当前展示口径：
 
@@ -28,6 +30,8 @@
 - AMR 集成边界保持在 HTTP API 层。
 - IMU / robot state 是只读状态镜像。
 - Motor bench 只提供低频、受限、显式的本地 bench 命令入口。
+- Evaluation 数据只表示 `mock_evaluation`、`baseline_system_evaluation` 或 `interface_reserved`，不宣称已有真实 VLA / RL / world model 训练结果。
+- GPU 未接入时必须显示 `not_connected`，不填虚假利用率。
 - 前端保持纯 HTML / CSS / JavaScript，不引入前端框架或构建工具。
 
 ## Dashboard Preview / 页面预览
@@ -232,6 +236,12 @@ flowchart TD
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`
+- `GET /api/evaluation/runs`
+- `GET /api/evaluation/datasets`
+- `GET /api/evaluation/models`
+- `GET /api/evaluation/failure-cases`
+- `GET /api/evaluation/compute`
+- `GET /api/evaluation/summary`
 - `WebSocket /ws/status`
 - `ROBOT_OPS_TASK_SOURCE=mock_json|amr_http`
 
@@ -243,8 +253,11 @@ flowchart TD
 - `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流，不依赖 ROS 2、Gazebo、RViz、OpenCV 或系统桌面环境
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy，支持任务查询与创建
 - `/api/robot/motor/cmd` 会把前端命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制
+- `/api/evaluation/*` 是作品集 Data & Evaluation Layer 的只读接口，只读取 `mock/` 与 `backend/data/eval_runs/` 下的 baseline / mock / reserved 数据
+- `/api/evaluation/summary` 返回 `backend/data/eval_runs/sample_eval_run.json` 的轻量核心摘要
 - `/ws/status` 向前端推送任务、设备、IMU 和电机状态快照
-- 前端实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream`
+- 前端首屏实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream`
+- 前端首屏下方的 `Evaluation & ML-ready Data Layer` 面向作品集截图组织为 Hero、纵向数据流程、三张摘要卡和 Current Scope 标注，展示 `run_id`、`dataset_version`、`model_version`、`policy_type`、任务成功率、质量检查和 ML-ready feature 字段；当 evaluation API 不可用时使用 `Offline / Mock` fallback，不白屏
 
 ## 第一阶段优先级
 
@@ -260,6 +273,7 @@ flowchart TD
 作品集素材统一放在 `artifacts/` 下：
 
 - [artifacts/screenshots](./artifacts/screenshots/)：Dashboard 总览、任务下发、IMU 状态、Motor / Encoder bench、断连状态截图。
+- 建议使用 `dashboard-evaluation-platform-1440x900.png` 展示完整 `Evaluation & ML-ready Data Layer`；后端未启动时可额外截取 `dashboard-disconnected-evaluation-1440x900.png`，保留右上角 `Offline / Mock` fallback 标注。
 - [artifacts/videos](./artifacts/videos/)：60-90 秒演示录屏和最终剪辑版本。
 - [artifacts/reports](./artifacts/reports/)：录屏前彩排、HTTP API 验证、MQTT topic 采样和测试报告。
 
@@ -803,12 +817,16 @@ DASHBOARD_API_BASE_URL=http://127.0.0.1:9000 \
 ```text
 robot-ops-dashboard/
 ├── README.md
+├── PLAN.md
 ├── docs/
 │   ├── design.md
 │   ├── roadmap.md
 │   ├── api_contract.md
 │   ├── data_sources.md
 │   ├── dashboard_pages.md
+│   ├── robot_data_evaluation_platform.md
+│   ├── robot_data_pipeline.md
+│   ├── evaluation_dashboard_design.md
 │   ├── integration_amr_http.md
 │   ├── integration_mqtt_device.md
 │   ├── wms_task_proxy_design.md
@@ -818,7 +836,12 @@ robot-ops-dashboard/
 ├── mock/
 │   ├── sample_amr_tasks.json
 │   ├── sample_device_status.json
-│   └── sample_alerts.json
+│   ├── sample_alerts.json
+│   ├── sample_evaluation_runs.json
+│   ├── sample_dataset_versions.json
+│   ├── sample_model_versions.json
+│   ├── sample_failure_cases.json
+│   └── sample_compute_usage.json
 ├── scripts/
 │   ├── mock_mqtt_motor_status_publisher.py
 │   ├── run_amr_dashboard_recording_demo.sh
@@ -848,12 +871,16 @@ robot-ops-dashboard/
 说明：
 
 - `docs/` 用于沉淀设计、范围、接口契约与路线规划
-- `mock/` 用于提供前后续开发、联调和演示的样例数据
+- `mock/` 用于提供前后续开发、联调、演示和只读 evaluation 展示的样例数据
 - `backend/` 当前提供最小 FastAPI 后端、AMR HTTP adapter、Mock WMS task proxy 与 MQTT 状态缓存
-- `frontend/` 当前用于本地静态监控页面与 Mock WMS task 创建
+- `frontend/` 当前用于本地静态监控页面、Mock WMS task 创建与 Data & Evaluation Layer 展示
 
 ## 文档导航
 
+- [本次作品集改造计划](PLAN.md)
+- [机器人数据链路与评测平台说明](docs/robot_data_evaluation_platform.md)
+- [机器人数据链路说明](docs/robot_data_pipeline.md)
+- [Evaluation Dashboard 设计说明](docs/evaluation_dashboard_design.md)
 - [总体设计](docs/design.md)
 - [演进路线](docs/roadmap.md)
 - [数据接口契约](docs/api_contract.md)
@@ -870,4 +897,4 @@ robot-ops-dashboard/
 
 如果后续需要用于 GitHub 首页说明或简历描述，可以概括为：
 
-> 面向机器人系统运维、测试验证与状态监控的上层 Dashboard，围绕 `amr_warehouse_navigation` Mock WMS HTTP API 与本地 MQTT 状态 topic 建立监控和 Mock task 创建链路，并为 micro-ROS 设备接入、机器学习异常分类、LLM 诊断建议与 YOLO 视觉结果展示预留扩展能力。
+> 面向机器人数据链路、系统 baseline 评测与状态监控的轻量 Dashboard，围绕 `amr_warehouse_navigation` Mock WMS HTTP API、本地 MQTT 状态 topic 与 mock evaluation contract 建立统一展示入口，覆盖 AMR 任务链路、micro-ROS / MQTT 遥测、Motor bench 状态、run_id、dataset_version、model_version、失败样本和 compute 状态；当前不宣称真实 VLA / RL / world model 训练结果。

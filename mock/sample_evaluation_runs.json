@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-06-13T10:00:00+08:00",
+  "source": "mock_robot_data_evaluation_runs",
+  "data": [
+    {
+      "run_id": "run_mock_eval_20260613_amr_station_a_001",
+      "run_type": "baseline_system_evaluation",
+      "scenario": "AMR Mock WMS station_a navigation smoke evaluation",
+      "robot_id": "amr-001",
+      "task_source": "amr_mock_wms_http",
+      "dataset_version": "dataset_amr_mock_wms_v0_1",
+      "model_version": "nav2_baseline_no_ml_v0",
+      "status": "completed",
+      "task_total": 5,
+      "task_success": 4,
+      "task_failed": 1,
+      "task_success_rate": 0.8,
+      "started_at": "2026-06-13T09:30:00+08:00",
+      "finished_at": "2026-06-13T09:42:30+08:00",
+      "evidence_refs": [
+        "artifacts/screenshots/dashboard-overview-1440x900.png",
+        "artifacts/reports/mock_wms_baseline_eval.md"
+      ],
+      "result_scope": "baseline_system_evaluation_only_not_model_training"
+    },
+    {
+      "run_id": "run_mock_eval_20260613_mqtt_telemetry_001",
+      "run_type": "mock_evaluation",
+      "scenario": "MQTT telemetry freshness and dashboard mapping smoke evaluation",
+      "robot_id": "amr-001",
+      "task_source": "mqtt_robot_status_mock",
+      "dataset_version": "dataset_mqtt_telemetry_v0_1",
+      "model_version": "rule_based_health_baseline_v0",
+      "status": "completed",
+      "task_total": 8,
+      "task_success": 8,
+      "task_failed": 0,
+      "task_success_rate": 1.0,
+      "started_at": "2026-06-13T09:45:00+08:00",
+      "finished_at": "2026-06-13T09:51:00+08:00",
+      "evidence_refs": [
+        "mock/sample_device_status.json",
+        "mock/sample_alerts.json"
+      ],
+      "result_scope": "mock_evaluation_contract_demo"
+    },
+    {
+      "run_id": "run_reserved_20260613_vla_interface_001",
+      "run_type": "interface_reserved",
+      "scenario": "VLA/RL/world-model evaluation interface placeholder",
+      "robot_id": "amr-001",
+      "task_source": "reserved_interface",
+      "dataset_version": "dataset_interface_reserved_v0",
+      "model_version": "vla_interface_reserved",
+      "status": "reserved",
+      "task_total": 0,
+      "task_success": 0,
+      "task_failed": 0,
+      "task_success_rate": null,
+      "started_at": null,
+      "finished_at": null,
+      "evidence_refs": [],
+      "result_scope": "reserved_only_no_training_result"
+    }
+  ]
+}

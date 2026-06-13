@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Robot Ops Dashboard</title>
+    <title>Robot Data Link Evaluation Dashboard</title>
     <link rel="stylesheet" href="./styles.css?v=20260526-recording-cockpit" />
   </head>
   <body>
@@ -12,8 +12,8 @@
         <div class="brand-block">
           <span class="brand-mark"></span>
           <div>
-            <p class="eyebrow">Mock WMS · Motor Bench · Telemetry</p>
-            <h1>Robot Ops 联调看板</h1>
+            <p class="eyebrow">Robot Data Link · Evaluation · Telemetry</p>
+            <h1>机器人数据链路与评测看板</h1>
           </div>
         </div>
         <div class="topbar-status">
@@ -447,6 +447,121 @@
 
         </aside>
       </main>
+
+      <section class="evaluation-layer portfolio-evaluation" aria-label="Evaluation and ML-ready data layer">
+        <div class="evaluation-hero">
+          <div>
+            <p class="section-kicker">Data & Evaluation Layer</p>
+            <h2>Evaluation & ML-ready Data Layer</h2>
+            <p class="evaluation-subtitle">Data sources to evaluation run, quality checks, and ML-ready export</p>
+            <p class="evaluation-zh">
+              将 ROS2 仿真任务、真实硬件 IMU/Motor 状态、任务结果、失败样本和链路健康信息统一到
+              <strong>run_id</strong> / <strong>dataset_version</strong> / <strong>model_version</strong> 结构下。
+            </p>
+          </div>
+          <div class="evaluation-hero-status">
+            <strong id="evalRunType" class="eval-tag" data-state="reserved">reserved</strong>
+            <p id="evaluationMeta" class="compact-meta">waiting for evaluation data</p>
+          </div>
+        </div>
+
+        <div class="evaluation-flow" aria-label="Evaluation data flow">
+          <div class="evaluation-flow-node source-node">
+            <strong>Data Sources</strong>
+            <span>+</span>
+            <strong>IMU / Motor</strong>
+            <span>+</span>
+            <strong>Task Status</strong>
+          </div>
+          <span class="evaluation-flow-arrow">↓</span>
+          <div class="evaluation-flow-node">Evaluation Run</div>
+          <span class="evaluation-flow-arrow">↓</span>
+          <div class="evaluation-flow-node">Quality Checks</div>
+          <span class="evaluation-flow-arrow">↓</span>
+          <div class="evaluation-flow-node">ML-ready Export</div>
+        </div>
+
+        <div class="evaluation-grid portfolio-evaluation-grid">
+          <article class="cockpit-card evaluation-card experiment-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Experiment Record</p>
+                <h2>实验记录</h2>
+              </div>
+              <span id="evalRunStatus" class="eval-card-state mono" data-state="unknown">waiting</span>
+            </div>
+            <div class="card-body evaluation-card-body">
+              <div class="hero-readout eval-run-readout">
+                <strong id="evalRunId" class="status-label mono">--</strong>
+              </div>
+              <div class="info-grid evaluation-info-grid">
+                <div>
+                  <span>dataset_version</span>
+                  <strong id="evalDatasetVersion" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>model_version</span>
+                  <strong id="evalModelVersion" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>policy_type</span>
+                  <strong id="evalPolicyType" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>task_success_rate</span>
+                  <strong id="evalSuccessRate" class="mono">--%</strong>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="cockpit-card evaluation-card failure-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">Failure & Quality Checks</p>
+                <h2>失败与质量检查</h2>
+              </div>
+              <p id="evalFailureMeta" class="compact-meta">-- cases</p>
+            </div>
+            <div class="card-body evaluation-card-body">
+              <div class="quality-grid">
+                <div><span>failure_cases</span><strong id="evalFailureCasesCount" class="mono">--</strong></div>
+                <div><span>timestamp_check</span><strong id="evalTimestampCheck" class="mono">pending</strong></div>
+                <div><span>missing_value_check</span><strong id="evalMissingValueCheck" class="mono">pending</strong></div>
+                <div><span>source_check</span><strong id="evalSourceCheck" class="mono">pending</strong></div>
+                <div><span>mqtt_delay</span><strong id="evalMqttDelay" class="mono">--</strong></div>
+                <div><span>status_timeout</span><strong id="evalStatusTimeout" class="mono">--</strong></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="cockpit-card evaluation-card feature-card">
+            <div class="card-head">
+              <div>
+                <p class="section-kicker">ML-ready Features</p>
+                <h2>特征导出</h2>
+              </div>
+              <strong id="evalBaselineLabel" class="eval-tag" data-state="baseline">baseline</strong>
+            </div>
+            <div class="card-body evaluation-card-body">
+              <div class="feature-export-grid">
+                <div><span>task_result</span><strong id="evalTaskResult" class="mono">-</strong></div>
+                <div><span>recovery_count</span><strong id="evalRecoveryCount" class="mono">-</strong></div>
+                <div><span>imu_rms</span><strong id="evalImuRms" class="mono">-</strong></div>
+                <div><span>motor_error</span><strong id="evalMotorError" class="mono">-</strong></div>
+                <div><span>pwm_output</span><strong id="evalPwmOutput" class="mono">-</strong></div>
+                <div><span>label</span><strong id="evalFeatureLabel" class="mono">-</strong></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <aside class="evaluation-scope-note" aria-label="Current evaluation scope">
+          <strong>Current Scope</strong>
+          <span>Baseline system evaluation / mock evaluation structure.</span>
+          <span>No real VLA, RL, or world model training result is claimed.</span>
+        </aside>
+      </section>
 
       <div id="summaryGrid" class="summary-grid hidden-diagnostics" aria-hidden="true"></div>
     </div>

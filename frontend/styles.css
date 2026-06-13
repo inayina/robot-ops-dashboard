@@ -4117,6 +4117,364 @@ body,
   }
 }
 
+/* Portfolio evaluation layer: keep the cockpit as viewport 1, then present one screenshot-ready evaluation view. */
+html,
+body {
+  min-height: 100%;
+  height: auto;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.dashboard-shell {
+  min-height: 100vh;
+  height: auto;
+  grid-template-rows: 54px minmax(680px, calc(100vh - 84px)) auto;
+  overflow: visible;
+}
+
+.dashboard-main {
+  height: calc(100vh - 84px);
+  min-height: 680px;
+}
+
+.evaluation-layer {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  position: relative;
+  padding: 12px 12px 72px;
+  margin-bottom: 80px;
+  scroll-margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(90deg, rgba(78, 227, 172, 0.05), transparent 42%),
+    linear-gradient(180deg, rgba(18, 36, 31, 0.97), rgba(7, 16, 13, 0.98));
+  overflow: hidden;
+}
+
+.evaluation-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  min-width: 0;
+  min-height: 132px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(4, 12, 10, 0.46);
+}
+
+.evaluation-hero h2 {
+  margin-top: 5px;
+  font-size: 2.05rem;
+  line-height: 1.05;
+}
+
+.evaluation-subtitle {
+  margin: 8px 0 0;
+  color: var(--blue);
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.evaluation-zh {
+  max-width: 980px;
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.evaluation-zh strong {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.evaluation-hero-status {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: 0 0 230px;
+  min-width: 0;
+}
+
+.evaluation-hero-status .compact-meta {
+  max-width: 230px;
+  text-align: right;
+}
+
+.evaluation-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(4, 12, 10, 0.38);
+}
+
+.evaluation-flow-node {
+  min-height: 46px;
+  min-width: 0;
+  padding: 12px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  border: 1px solid rgba(120, 255, 207, 0.18);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(20, 42, 36, 0.92), rgba(8, 18, 15, 0.92));
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 0.86rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.evaluation-flow-node span {
+  color: var(--blue);
+  font-family: var(--mono);
+  font-weight: 800;
+}
+
+.source-node {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.evaluation-flow-arrow {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.evaluation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.evaluation-card {
+  min-height: 230px;
+  overflow: hidden;
+}
+
+.evaluation-card .card-head {
+  min-height: 44px;
+}
+
+.evaluation-card-body {
+  min-height: 0;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.eval-tag {
+  flex: 0 0 auto;
+  max-width: 132px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eval-tag[data-state="baseline"] {
+  border-color: rgba(78, 227, 172, 0.34);
+  color: var(--accent);
+}
+
+.eval-tag[data-state="mock"] {
+  border-color: rgba(111, 183, 255, 0.34);
+  color: var(--blue);
+}
+
+.eval-tag[data-state="reserved"] {
+  border-color: rgba(240, 184, 79, 0.34);
+  color: var(--amber);
+}
+
+.eval-run-readout {
+  min-height: 60px;
+  padding: 10px 12px;
+}
+
+.eval-run-readout .status-label {
+  font-size: 0.88rem;
+}
+
+.eval-card-state {
+  flex: 0 0 auto;
+  max-width: 92px;
+  padding: 4px 7px;
+  border: 1px solid rgba(120, 255, 207, 0.18);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eval-card-state[data-state="online"] {
+  color: var(--accent);
+}
+
+.eval-card-state[data-state="stale"] {
+  color: var(--amber);
+}
+
+.eval-card-state[data-state="offline"] {
+  color: var(--danger);
+}
+
+.evaluation-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.evaluation-info-grid > div {
+  min-height: 58px;
+  padding: 7px 8px;
+}
+
+.quality-grid,
+.feature-export-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+}
+
+.quality-grid > div,
+.feature-export-grid > div {
+  min-width: 0;
+  min-height: 54px;
+  padding: 8px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid rgba(120, 255, 207, 0.12);
+  border-radius: 6px;
+  background: rgba(4, 12, 10, 0.42);
+}
+
+.quality-grid span,
+.feature-export-grid span {
+  min-width: 0;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quality-grid strong,
+.feature-export-grid strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evaluation-scope-note {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  display: grid;
+  gap: 3px;
+  max-width: 390px;
+  padding: 10px 12px;
+  border: 1px solid rgba(240, 184, 79, 0.26);
+  border-radius: 6px;
+  background: rgba(24, 18, 8, 0.72);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.evaluation-scope-note strong {
+  color: var(--amber);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .source-node {
+    grid-template-columns: 1fr;
+  }
+
+  .evaluation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell {
+    grid-template-rows: auto auto auto;
+  }
+
+  .dashboard-main {
+    height: auto;
+    min-height: 0;
+  }
+
+  .evaluation-layer {
+    padding-bottom: 16px;
+  }
+
+  .evaluation-hero {
+    display: grid;
+    gap: 6px;
+  }
+
+  .evaluation-hero h2 {
+    font-size: 1.55rem;
+  }
+
+  .evaluation-hero-status {
+    justify-items: start;
+    flex-basis: auto;
+  }
+
+  .evaluation-hero-status .compact-meta,
+  .evaluation-scope-note {
+    max-width: none;
+    text-align: left;
+  }
+
+  .evaluation-scope-note {
+    position: static;
+  }
+}
+
 /* Give the center data-flow lanes more breathing room, paid for by the motor panel. */
 .center-column .data-flow-card {
   flex: 0 0 174px;
@@ -4156,4 +4514,17 @@ body,
     padding-top: 5px;
     padding-bottom: 5px;
   }
+}
+
+/* Final portfolio layout guard: keep the cockpit as viewport 1 and evaluation as viewport 2. */
+.dashboard-shell {
+  min-height: 100vh;
+  height: auto;
+  grid-template-rows: 54px calc(100vh - 84px) auto;
+  overflow: visible;
+}
+
+.dashboard-main {
+  height: calc(100vh - 84px);
+  min-height: calc(100vh - 84px);
 }

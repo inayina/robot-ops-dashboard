@@ -19,10 +19,12 @@ Dashboard 页面规划服务于两个关键词：
 - 适合项目负责人、运维和值班人员第一眼查看
 - 当前首页优先把任务流、阻塞状态、设备链路和告警状态放在首屏摘要中；它不是纯只读页面，但所有交互都必须走显式 backend HTTP API。
 - 当前前端首页采用单屏机器人运维驾驶舱布局：顶部固定状态摘要栏；左列收敛为 `Robot Link`、`Event Log` 与 `Safety STOP`；中列以 IMU 姿态、三条加高的数据流泳道和 `Motor Bench Flow` 为核心展示，其中 `单向遥测` 表示 ESP32 / micro-ROS / ROS 2 / MQTT 到 Dashboard 的只读镜像，`任务 HTTP` 表示 Dashboard backend 与 AMR Mock WMS 的读取 / 创建双向交互，`Motor Bench` 表示受限命令下发与状态回传双向链路，速度控制与电机曲线合并在同一数据流卡片中；右列固定为 `Current Task Execution`、`Task Dispatch` 与 `Simulation Preview` 三张主卡片，三张卡在 1366x768 与 1440x900 下保持一屏可见。当前任务执行卡统一展示任务 ID、状态、进度、路线、机器人、阶段、当前步骤与任务统计，长任务 ID 和当前步骤使用单行省略。
+- `Robot Link` 与顶部链路状态在收到 live MQTT / micro-ROS 镜像设备时，优先使用 `mqtt_*` 实时设备计算健康状态；`future_*` mock 样例不再主导录屏总览状态，避免真实硬件在线时被 reserved/mock 设备误标为 warning 或 critical。
 - `Task Dispatch` 只保留任务类型、起点、终点、下发按钮和一行轻量刷新状态；完整 WMS task list 不在右侧主卡内展示，避免任务列表行数影响单屏布局。
 - `Event Log` 显示最近 8 条状态事件，优先记录当前 WMS 任务状态变化、任务下发、电机 bench 命令、告警和连接异常；正常 WebSocket 心跳不再作为泛化事件占用列表空间。
 - `Simulation Preview` 通过 `GET /api/sim/preview` 读取连接状态。未配置预览流时显示 Gazebo path view 未连接占位画面；配置 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL` 后，前端自动使用返回的 `/api/sim/stream` 切换到真实 MJPEG 画面。该区域不嵌入 RViz、不做 noVNC、不做 WebRTC；上游画面可以是 Gazebo 顶视图，也可以是带 path 的 RViz 视图。
-- 首页不再按长网页组织，`body` 禁止上下滚动；卡片使用固定 header/body/footer 分层，长文本统一单行裁剪，NetworkError 等长错误只进入 Event Log，主卡片保留短状态和离线预览占位。
+- 首页首屏仍按固定 cockpit 组织，AMR / IMU / Motor / Simulation Preview 主卡片保持一屏可见；首屏下方新增 `Data & Evaluation Layer`，页面允许纵向滚动到第二屏用于作品集截图。卡片使用固定 header/body/footer 分层，长文本统一单行裁剪，NetworkError 等长错误只进入 Event Log，主卡片保留短状态和离线预览占位。
+- `Evaluation & ML-ready Data Layer` 固定为只读展示区，面向作品集截图组织为 Hero、纵向流程图、`Experiment Record`、`Failure & Quality Checks`、`ML-ready Features` 三张卡片和 `Current Scope` 说明。该区域通过 `GET /api/evaluation/*` 读取 mock/baseline/reserved 数据；接口不可用时使用前端 `Offline / Mock` fallback，不写数据库、不发布 MQTT、不创建 WMS task。
 
 建议模块：
 
@@ -89,6 +91,8 @@ Dashboard 页面规划服务于两个关键词：
 用途：
 
 - 用于展示现场验证、回归测试和专项测试结果
+- 当前首页第二屏已提供轻量版 `Data & Evaluation Layer`，用于作品集展示 `run_id`、`dataset_version`、`model_version`、任务成功率、失败样本与 GPU/compute 状态。
+- 当前 evaluation 结果只覆盖 `mock_evaluation`、`baseline_system_evaluation` 和 `interface_reserved`，不展示虚构的真实 VLA / RL / world model 成绩。
 
 建议模块：
 
@@ -97,6 +101,8 @@ Dashboard 页面规划服务于两个关键词：
 - 最近失败用例
 - 失败原因统计
 - 环境与版本信息
+- Dataset / model registry
+- GPU / compute source health
 
 ## 2.6 AI 洞察页 AI Insights
 

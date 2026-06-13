@@ -32,6 +32,12 @@
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`
+- `GET /api/evaluation/runs`
+- `GET /api/evaluation/datasets`
+- `GET /api/evaluation/models`
+- `GET /api/evaluation/failure-cases`
+- `GET /api/evaluation/compute`
+- `GET /api/evaluation/summary`
 - `WebSocket /ws/status`
 
 其中：
@@ -42,6 +48,8 @@
 - `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流。
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy。
 - `/api/robot/motor/cmd` 会把命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制。
+- `/api/evaluation/*` 只读取本仓库 mock evaluation 文件，用于作品集 Data & Evaluation Layer，不代表真实模型训练结果。
+- `/api/evaluation/summary` 只读取 `backend/data/eval_runs/sample_eval_run.json` 并返回核心摘要，用于第一阶段轻量 run 展示。
 - Motor / Encoder 卡片中的 `Closed-loop tuning trend` 只在 Dashboard 前端记录最近状态样本，用于观察 `target_rpm`、`measured_rpm` / `actual_rpm`、`error_rpm` 与 `pwm/max_pwm` 的调参趋势。
 
 ## 3. 当前交互边界
@@ -53,6 +61,8 @@
 - 不提供多机器人调度能力。
 - 前端不直接连接 ROS 2 或 MQTT。
 - `/api/sim/stream` 不发布 ROS topic，不控制 Nav2、电机或真实机器人。
+- `/api/evaluation/*` 不创建 WMS task，不发布 MQTT，不控制机器人，不伪造 VLA / RL / world model 训练结果。
+- `/api/evaluation/summary` 不读取真实训练平台，不触发训练任务，不采样真实 GPU。
 - motor command 更适合本地 bench / dashboard 联调，不应被表述为完整机器人控制平面。
 - Motor closed-loop tuning trend 是 dashboard 侧低频可视化，不参与实时闭环控制，也不会向 ROS 2、MQTT 或硬件写入任何新命令。
 

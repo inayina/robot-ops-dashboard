@@ -25,6 +25,12 @@
 - `GET /api/robot/status`
 - `GET /api/sim/preview`
 - `GET /api/sim/stream`
+- `GET /api/evaluation/runs`
+- `GET /api/evaluation/datasets`
+- `GET /api/evaluation/models`
+- `GET /api/evaluation/failure-cases`
+- `GET /api/evaluation/compute`
+- `GET /api/evaluation/summary`
 
 当前已实现的显式交互接口：
 
@@ -48,6 +54,8 @@
 - `/api/robot/status` 为 MQTT 状态读取接口，只返回 backend 内存中缓存的最新消息
 - `/api/sim/preview` 返回仿真路径预览连接状态；配置 MJPEG 上游后会返回 `/api/sim/stream`
 - `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流，不直接连接 ROS 2、Gazebo、RViz、noVNC 或 WebRTC
+- `/api/evaluation/*` 是作品集评测展示层的只读 mock/baseline/reserved 数据接口，不写数据库、不发布 MQTT、不创建 WMS task
+- `/api/evaluation/summary` 是第一阶段轻量 run 摘要接口，读取 `backend/data/eval_runs/sample_eval_run.json`
 
 ## 3. 通用响应结构
 
@@ -383,7 +391,95 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 - 前端 IMU 区域复用 `topics["robot/imu"].received_at` 作为 `last_seen`，并从 `robot.imu` 或该 topic 的 `payload` 读取 accel x/y/z、gyro x/y/z、temperature 与 state。
 - 前端 Motor / Encoder 区域复用 `topics["robot/motor/status"].received_at`、payload `last_update_time` 或 `freshness.*.last_received_time` 作为 freshness 时间；无真实 topic 时保留 null / placeholder 状态。
 
-## 10. 设计原则
+## 10. Robot Data Evaluation APIs
+
+本节接口用于 `Data & Evaluation Layer` 前端卡片，只读读取 `mock/` 下的样例文件。它们服务作品集中的机器人数据链路与评测平台口径，不代表真实 VLA / RL / world model 训练结果。
+
+### 10.1 `GET /api/evaluation/runs`
+
+返回 `mock/sample_evaluation_runs.json`。
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `run_id` | string | 评测 run 唯一标识 |
+| `run_type` | string | `mock_evaluation` / `baseline_system_evaluation` / `interface_reserved` |
+| `scenario` | string | 场景名称 |
+| `robot_id` | string | 关联机器人 |
+| `task_source` | string | 数据来源，如 `amr_mock_wms_http` |
+| `dataset_version` | string | 关联数据版本 |
+| `model_version` | string | 关联模型、规则 baseline 或接口预留版本 |
+| `status` | string | `completed` / `running` / `failed` / `reserved` |
+| `task_total` | number | 任务总数 |
+| `task_success` | number | 成功任务数 |
+| `task_failed` | number | 失败任务数 |
+| `task_success_rate` | number\|null | 成功率；预留项为 `null` |
+| `started_at` | string\|null | 开始时间 |
+| `finished_at` | string\|null | 完成时间 |
+| `evidence_refs` | array | 证据文件或截图引用 |
+| `result_scope` | string | 结果口径，必须说明 mock/baseline/reserved 范围 |
+
+### 10.2 `GET /api/evaluation/datasets`
+
+返回 `mock/sample_dataset_versions.json`。用于展示 AMR task、MQTT telemetry、micro-ROS IMU、motor bench status 等数据链路版本。
+
+核心字段：`dataset_version`、`dataset_type`、`source_chain`、`sample_count`、`time_range`、`labels`、`storage_ref`、`is_mock`、`notes`。
+
+### 10.3 `GET /api/evaluation/models`
+
+返回 `mock/sample_model_versions.json`。初始包含：
+
+- `nav2_baseline_no_ml_v0`：Nav2 + Mock WMS 系统 baseline，不是机器学习模型。
+- `rule_based_health_baseline_v0`：规则状态映射 baseline，没有训练过程。
+- `vla_interface_reserved`：未来 VLA / RL / world model 评测结果预留接口，目前 `training_status=reserved_only`。
+
+核心字段：`model_version`、`model_type`、`training_status`、`source`、`metrics_available`、`notes`。
+
+### 10.4 `GET /api/evaluation/failure-cases`
+
+返回 `mock/sample_failure_cases.json`。用于展示失败样本 review 队列，不自动生成控制命令或修复动作。
+
+核心字段：`failure_case_id`、`run_id`、`task_id`、`robot_id`、`failure_type`、`severity`、`summary`、`evidence_refs`、`reproduction_hint`、`status`。
+
+### 10.5 `GET /api/evaluation/compute`
+
+返回 `mock/sample_compute_usage.json`。用于展示 GPU / compute 状态。
+
+没有真实 GPU 采样时，必须使用：
+
+```json
+{
+  "gpu_status": "not_connected",
+  "gpu_name": null,
+  "gpu_utilization_pct": null,
+  "gpu_memory_used_mb": null
+}
+```
+
+不得用虚假 GPU 利用率包装成真实训练环境。
+
+### 10.6 `GET /api/evaluation/summary`
+
+返回 `backend/data/eval_runs/sample_eval_run.json` 的核心摘要，用于作品集第一阶段轻量 evaluation 层。
+
+响应字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `run_id` | string | 当前 evaluation run ID |
+| `dataset_version` | string | 数据版本 |
+| `model_version` | string | baseline 或模型版本；当前为 `baseline_nav2_no_learning` |
+| `task_success_rate` | number | mock / baseline 任务成功率 |
+| `failure_count` | number | `failure_cases` 数量 |
+| `data_sources` | array | ROS 2 / MQTT / HTTP / WebSocket / CSV 等数据源摘要 |
+| `latest_status` | string | run 最新状态 |
+| `gpu_usage` | string | 当前为 `N/A` 或 `reserved`，不代表真实 GPU 训练 |
+| `quality_checks` | object | 数据质量检查摘要 |
+
+该接口只读，不触发训练、不发布 MQTT、不创建任务、不控制机器人。
+
+## 11. 设计原则
 
 统一契约需要坚持以下原则：
 
@@ -393,7 +489,7 @@ Backend 转发到 AMR Mock WMS API 的 `POST /tasks`：
 4. AI 输出必须携带证据与置信度
 5. 所有告警对象都应能回溯到源对象
 
-## 11. 与项目边界的关系
+## 12. 与项目边界的关系
 
 本文档定义的是 Dashboard 的展示型数据契约，不代表本仓库承担以下职责：
 

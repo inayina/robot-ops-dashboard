@@ -1,0 +1,109 @@
+{
+  "run_id": "eval_run_20260613_baseline_nav2_001",
+  "experiment_name": "Robot data pipeline baseline evaluation - AMR Mock WMS station task",
+  "dataset_version": "robot_ops_dataset_mock_wms_mqtt_v0.1",
+  "model_version": "baseline_nav2_no_learning",
+  "policy_type": "rule_based_nav2_baseline",
+  "robot_platform": {
+    "simulation": "ROS 2 Jazzy + Gazebo + Nav2 AMR",
+    "hardware_status_chain": "STM32 / ESP32-S3 / micro-ROS / MQTT",
+    "dashboard": "FastAPI + WebSocket + static HTML/CSS/JS"
+  },
+  "scenario": {
+    "name": "mock_wms_station_a_delivery",
+    "environment": "local simulation and bench telemetry",
+    "description": "Baseline evaluation of the existing AMR Mock WMS task chain and telemetry mapping. This is not a learned policy result."
+  },
+  "data_sources": [
+    {
+      "name": "amr_mock_wms_tasks",
+      "transport": "HTTP",
+      "path": "GET /api/tasks",
+      "source": "amr_warehouse_navigation Mock WMS API"
+    },
+    {
+      "name": "robot_status_mirror",
+      "transport": "MQTT",
+      "path": "robot/imu, robot/state, robot/motor/status",
+      "source": "micro-ROS / ROS 2 to MQTT bridge"
+    },
+    {
+      "name": "dashboard_status_stream",
+      "transport": "WebSocket",
+      "path": "WebSocket /ws/status",
+      "source": "Dashboard backend status snapshot"
+    },
+    {
+      "name": "offline_eval_artifacts",
+      "transport": "CSV/reserved",
+      "path": "artifacts/reports/reserved_eval_samples.csv",
+      "source": "reserved interface for future offline evaluation artifacts"
+    }
+  ],
+  "task_results": [
+    {
+      "task_id": "TASK-20260516-001",
+      "scenario": "station_a_delivery",
+      "status": "succeeded",
+      "duration_sec": 142,
+      "source_status": "completed",
+      "notes": "Mock baseline sample for task lifecycle mapping."
+    },
+    {
+      "task_id": "TASK-20260516-002",
+      "scenario": "station_b_delivery",
+      "status": "failed",
+      "duration_sec": 180,
+      "source_status": "blocked",
+      "notes": "Mock failure sample used to demonstrate failure-case review."
+    },
+    {
+      "task_id": "TASK-20260516-003",
+      "scenario": "dock_a_return",
+      "status": "succeeded",
+      "duration_sec": 118,
+      "source_status": "completed",
+      "notes": "Mock baseline sample for dashboard evaluation summary."
+    }
+  ],
+  "task_success_rate": 0.667,
+  "failure_cases": [
+    {
+      "failure_case_id": "failure_mock_station_b_blocked_001",
+      "task_id": "TASK-20260516-002",
+      "failure_type": "blocked_task",
+      "severity": "warning",
+      "summary": "Mock WMS task entered blocked status during baseline evaluation.",
+      "evidence": [
+        "mock/sample_amr_tasks.json",
+        "artifacts/screenshots/dashboard-task-dispatch-1440x900.png"
+      ]
+    }
+  ],
+  "quality_checks": {
+    "schema_valid": true,
+    "timestamps_present": true,
+    "data_sources_named": true,
+    "mock_or_baseline_labeled": true,
+    "no_real_training_claim": true
+  },
+  "log_paths": {
+    "dashboard_backend": "artifacts/reports/dashboard_backend_eval_reserved.log",
+    "amr_mock_wms": "artifacts/reports/amr_mock_wms_eval_reserved.log",
+    "mqtt_samples": "artifacts/reports/mqtt_status_eval_reserved.csv"
+  },
+  "config_snapshot": {
+    "ROBOT_OPS_TASK_SOURCE": "mock_json_or_amr_http",
+    "AMR_API_BASE_URL": "http://127.0.0.1:8000",
+    "MQTT_BROKER_URL": "mqtt://127.0.0.1:1883",
+    "evaluation_mode": "baseline_mock_only"
+  },
+  "gpu_usage": "N/A - reserved for future training or evaluation runners",
+  "latest_status": "completed_with_mock_failure_case",
+  "notes": [
+    "This run is a lightweight baseline/mock evaluation for portfolio presentation.",
+    "model_version=baseline_nav2_no_learning is not a learned model.",
+    "policy_type=rule_based_nav2_baseline is not VLA, RL, or world-model training.",
+    "GPU usage is N/A/reserved; no real training result is claimed."
+  ]
+}

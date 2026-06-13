@@ -11,7 +11,10 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 | AMR 任务流 / Mock WMS task | `amr_warehouse_navigation` Mock WMS API | HTTP | 最高 | 已有任务读取与最小 task creation proxy | 用于任务页、总览页、告警页、本地演示 |
 | 机器人设备状态与电机联调 | `ros2-robot-digital-twin` / 本地 MQTT mock | MQTT | 高 | 已有状态接入与受限 motor command | 用于设备页、告警页、bench 联调 |
 | 下位机状态 | `ros2-robot-digital-twin` / micro-ROS | micro-ROS 桥接 | 高 | 后续预留 | 用于底盘、传感器、安全模块状态 |
-| 测试执行结果 | 测试脚本/验证流水线 | 文件或 HTTP | 中 | 后续规划 | 用于测试验证页 |
+| Evaluation runs / baseline 评测 | 本仓库 `mock/sample_evaluation_runs.json` | 文件 -> HTTP | 中 | 已有只读 mock/baseline/reserved 接口 | 用于 run_id、任务成功率、result_scope 展示 |
+| Dataset / Model registry | 本仓库 `mock/sample_dataset_versions.json` / `mock/sample_model_versions.json` | 文件 -> HTTP | 中 | 已有只读 registry 接口 | 用于 dataset_version、model_version、training_status 展示 |
+| Failure cases / Compute usage | 本仓库 `mock/sample_failure_cases.json` / `mock/sample_compute_usage.json` | 文件 -> HTTP | 中 | 已有只读展示接口 | 用于失败样本 review 与 GPU not_connected 状态 |
+| 测试执行结果 | 测试脚本/验证流水线 | 文件或 HTTP | 中 | 后续可接入 | 用于测试验证页 |
 | AI 异常结果 | ML / LLM / YOLO 服务 | HTTP 或消息流 | 中 | 后续预留 | 用于 AI 扩展页 |
 | 人工标注信息 | 运维/测试人员 | 手工录入或配置 | 低 | 后续可选 | 用于备注、确认、复盘 |
 
@@ -37,6 +40,23 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 - micro-ROS 下位机状态
 
 这两类数据会让 Dashboard 从“任务看板”升级为“系统运维看板”。
+
+## 4.1 作品集 Evaluation 数据源
+
+当前新增的 evaluation 数据源只服务作品集展示和接口预留，默认来自 `mock/` 文件：
+
+- `mock/sample_evaluation_runs.json` -> `GET /api/evaluation/runs`
+- `mock/sample_dataset_versions.json` -> `GET /api/evaluation/datasets`
+- `mock/sample_model_versions.json` -> `GET /api/evaluation/models`
+- `mock/sample_failure_cases.json` -> `GET /api/evaluation/failure-cases`
+- `mock/sample_compute_usage.json` -> `GET /api/evaluation/compute`
+
+这些数据源的口径：
+
+- `baseline_system_evaluation` 表示对现有系统链路的 baseline 评测，不代表训练模型。
+- `mock_evaluation` 表示 mock 数据契约与页面展示验证。
+- `interface_reserved` 表示未来 VLA / RL / world model 结果预留，目前没有真实训练结果。
+- GPU 未接入时必须显示 `not_connected`，不得填充虚假利用率。
 
 ## 5. 数据接入策略
 
@@ -104,6 +124,7 @@ Dashboard 的价值来自“多源汇总”。因此，V0.1 需要先明确数�
 - 只提供最小 Mock WMS task creation proxy，不负责完整 WMS 业务单据
 - 不负责驱动 Nav2 执行
 - 不负责底盘级高频电机闭环控制
-- 不负责承载完整 AI 推理服务
+- 不负责承载完整 AI 训练、推理或评测平台
+- 不把 `interface_reserved` 伪装成真实模型训练结果
 
 这里只负责把这些系统的关键信息聚合成统一视图。

@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-13T10:00:00+08:00",
+  "source": "mock_robot_data_model_registry",
+  "data": [
+    {
+      "model_version": "nav2_baseline_no_ml_v0",
+      "model_type": "system_baseline",
+      "training_status": "not_trained",
+      "source": "Nav2 + Mock WMS executor baseline",
+      "metrics_available": true,
+      "notes": "Baseline system evaluation for navigation/task pipeline. This is not an ML model."
+    },
+    {
+      "model_version": "rule_based_health_baseline_v0",
+      "model_type": "rule_based_baseline",
+      "training_status": "not_trained",
+      "source": "Dashboard rule-based status mapping",
+      "metrics_available": true,
+      "notes": "Rule baseline for telemetry freshness and status mapping; no model training is involved."
+    },
+    {
+      "model_version": "vla_interface_reserved",
+      "model_type": "embodied_ai_interface_placeholder",
+      "training_status": "reserved_only",
+      "source": "reserved interface",
+      "metrics_available": false,
+      "notes": "Reserved placeholder for future VLA/RL/world-model evaluation results; no real training result exists in this project."
+    }
+  ]
+}

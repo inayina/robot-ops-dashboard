@@ -16,10 +16,16 @@ from .config import (
     APP_DESCRIPTION,
     APP_NAME,
     APP_VERSION,
+    COMPUTE_USAGE_FILE,
     CORS_ALLOW_HEADERS,
     CORS_ALLOW_METHODS,
     CORS_ALLOW_ORIGINS,
+    DATASET_VERSIONS_FILE,
     DEVICE_STATUS_FILE,
+    EVALUATION_RUNS_FILE,
+    FAILURE_CASES_FILE,
+    MODEL_VERSIONS_FILE,
+    SAMPLE_EVAL_RUN_FILE,
     TASKS_FILE,
 )
 from .schemas import (
@@ -381,6 +387,37 @@ def build_robot_status_response() -> RobotStatusResponse:
     return RobotStatusResponse(**mqtt_status_service.build_status())
 
 
+def build_evaluation_summary() -> dict[str, Any]:
+    payload = mock_data_service.load_payload(SAMPLE_EVAL_RUN_FILE)
+    task_results = payload.get("task_results")
+    failure_cases = payload.get("failure_cases")
+    failure_count = len(failure_cases) if isinstance(failure_cases, list) else 0
+    latest_status = payload.get("latest_status") or derive_latest_evaluation_status(task_results)
+
+    return {
+        "run_id": payload.get("run_id"),
+        "dataset_version": payload.get("dataset_version"),
+        "model_version": payload.get("model_version"),
+        "task_success_rate": payload.get("task_success_rate"),
+        "failure_count": failure_count,
+        "data_sources": payload.get("data_sources", []),
+        "latest_status": latest_status,
+        "gpu_usage": payload.get("gpu_usage"),
+        "quality_checks": payload.get("quality_checks", {}),
+    }
+
+
+def derive_latest_evaluation_status(task_results: Any) -> str:
+    if not isinstance(task_results, list) or not task_results:
+        return "unknown"
+
+    latest_task = task_results[-1]
+    if not isinstance(latest_task, dict):
+        return "unknown"
+
+    return str(latest_task.get("status") or latest_task.get("result") or "unknown")
+
+
 def build_sim_preview_response(request: Request) -> SimPreviewResponse:
     stream_proxy = get_mjpeg_stream_proxy()
     if not stream_proxy.is_configured():
@@ -500,6 +537,36 @@ async def get_device_status() -> MockEnvelope:
 @app.get("/api/alerts", response_model=MockEnvelope)
 async def get_alerts() -> MockEnvelope:
     return load_mock_envelope(ALERTS_FILE)
+
+
+@app.get("/api/evaluation/runs", response_model=MockEnvelope)
+async def get_evaluation_runs() -> MockEnvelope:
+    return load_mock_envelope(EVALUATION_RUNS_FILE)
+
+
+@app.get("/api/evaluation/datasets", response_model=MockEnvelope)
+async def get_evaluation_datasets() -> MockEnvelope:
+    return load_mock_envelope(DATASET_VERSIONS_FILE)
+
+
+@app.get("/api/evaluation/models", response_model=MockEnvelope)
+async def get_evaluation_models() -> MockEnvelope:
+    return load_mock_envelope(MODEL_VERSIONS_FILE)
+
+
+@app.get("/api/evaluation/failure-cases", response_model=MockEnvelope)
+async def get_evaluation_failure_cases() -> MockEnvelope:
+    return load_mock_envelope(FAILURE_CASES_FILE)
+
+
+@app.get("/api/evaluation/compute", response_model=MockEnvelope)
+async def get_evaluation_compute() -> MockEnvelope:
+    return load_mock_envelope(COMPUTE_USAGE_FILE)
+
+
+@app.get("/api/evaluation/summary")
+async def get_evaluation_summary() -> dict[str, Any]:
+    return build_evaluation_summary()
 
 
 @app.get("/api/robot/status", response_model=RobotStatusResponse)

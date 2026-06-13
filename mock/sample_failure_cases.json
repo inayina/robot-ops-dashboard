@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-06-13T10:00:00+08:00",
+  "source": "mock_robot_data_failure_cases",
+  "data": [
+    {
+      "failure_case_id": "failcase_mock_wms_nav_timeout_001",
+      "run_id": "run_mock_eval_20260613_amr_station_a_001",
+      "task_id": "TASK-20260516-002",
+      "robot_id": "amr-001",
+      "failure_type": "navigation_timeout_or_blocked_task",
+      "severity": "warning",
+      "summary": "Mock WMS task entered blocked state during baseline system evaluation.",
+      "evidence_refs": [
+        "mock/sample_amr_tasks.json",
+        "artifacts/screenshots/dashboard-task-dispatch-1440x900.png"
+      ],
+      "reproduction_hint": "Run AMR Mock WMS in amr_http mode and create a station_a task, then inspect mapped task status.",
+      "status": "open"
+    },
+    {
+      "failure_case_id": "failcase_mqtt_motor_stale_001",
+      "run_id": "run_mock_eval_20260613_mqtt_telemetry_001",
+      "task_id": null,
+      "robot_id": "amr-001",
+      "failure_type": "telemetry_stale",
+      "severity": "info",
+      "summary": "Motor bench status can become stale when MQTT publisher is not running.",
+      "evidence_refs": [
+        "mock/sample_device_status.json",
+        "docs/integration_mqtt_device.md"
+      ],
+      "reproduction_hint": "Stop the MQTT motor status publisher and observe Dashboard disconnected/stale state.",
+      "status": "reviewed"
+    }
+  ]
+}

@@ -239,6 +239,12 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status | python3 -m json.tool
 - `GET /api/wms/tasks`
 - `POST /api/wms/tasks`
 - `POST /api/robot/motor/cmd`
+- `GET /api/evaluation/runs`
+- `GET /api/evaluation/datasets`
+- `GET /api/evaluation/models`
+- `GET /api/evaluation/failure-cases`
+- `GET /api/evaluation/compute`
+- `GET /api/evaluation/summary`
 - `WebSocket /ws/status`
 
 ## 接口说明

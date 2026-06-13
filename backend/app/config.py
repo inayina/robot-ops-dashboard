@@ -7,15 +7,28 @@ APP_DESCRIPTION = "Minimal FastAPI backend for serving local mock robot operatio
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MOCK_DIR = PROJECT_ROOT / "mock"
+BACKEND_DATA_DIR = PROJECT_ROOT / "backend" / "data"
+EVAL_RUNS_DIR = BACKEND_DATA_DIR / "eval_runs"
 
 TASKS_FILE = MOCK_DIR / "sample_amr_tasks.json"
 DEVICE_STATUS_FILE = MOCK_DIR / "sample_device_status.json"
 ALERTS_FILE = MOCK_DIR / "sample_alerts.json"
+EVALUATION_RUNS_FILE = MOCK_DIR / "sample_evaluation_runs.json"
+DATASET_VERSIONS_FILE = MOCK_DIR / "sample_dataset_versions.json"
+MODEL_VERSIONS_FILE = MOCK_DIR / "sample_model_versions.json"
+FAILURE_CASES_FILE = MOCK_DIR / "sample_failure_cases.json"
+COMPUTE_USAGE_FILE = MOCK_DIR / "sample_compute_usage.json"
+SAMPLE_EVAL_RUN_FILE = EVAL_RUNS_DIR / "sample_eval_run.json"
 
 MOCK_DATA_FILES = {
     "tasks": TASKS_FILE,
     "device_status": DEVICE_STATUS_FILE,
     "alerts": ALERTS_FILE,
+    "evaluation_runs": EVALUATION_RUNS_FILE,
+    "dataset_versions": DATASET_VERSIONS_FILE,
+    "model_versions": MODEL_VERSIONS_FILE,
+    "failure_cases": FAILURE_CASES_FILE,
+    "compute_usage": COMPUTE_USAGE_FILE,
 }
 
 CORS_ALLOW_ORIGINS = ["*"]

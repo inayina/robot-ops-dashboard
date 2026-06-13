@@ -97,6 +97,21 @@ async function safeClick(page, selector) {
   }
 }
 
+async function safeScrollIntoView(page, selector) {
+  const node = page.locator(selector);
+  if (await node.count()) {
+    await page.evaluate((targetSelector) => {
+      const target = document.querySelector(targetSelector);
+      if (!target) {
+        return;
+      }
+      const top = target.getBoundingClientRect().top + window.scrollY - 8;
+      window.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+    }, selector);
+    await page.waitForTimeout(800);
+  }
+}
+
 async function captureScreenshots(page, screenshotsDir) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await waitForDashboard(page);
@@ -115,6 +130,20 @@ async function captureScreenshots(page, screenshotsDir) {
   await page.waitForTimeout(1000);
   await page.screenshot({
     path: path.join(screenshotsDir, "dashboard-recording-frame-1366x768.png"),
+    fullPage: false,
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await safeScrollIntoView(page, ".evaluation-layer");
+  await page.screenshot({
+    path: path.join(screenshotsDir, "dashboard-evaluation-platform-1440x900.png"),
+    fullPage: false,
+  });
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await safeScrollIntoView(page, ".failure-card");
+  await page.screenshot({
+    path: path.join(screenshotsDir, "dashboard-failure-cases-1366x768.png"),
     fullPage: false,
   });
 }
@@ -143,7 +172,9 @@ async function runRecordedWalkthrough(page) {
   }
 
   const remainingMs = Math.max(0, options.recordMs - 12000);
-  await page.waitForTimeout(remainingMs);
+  await page.waitForTimeout(Math.max(0, remainingMs - 6000));
+  await safeScrollIntoView(page, ".evaluation-layer");
+  await page.waitForTimeout(6000);
 }
 
 async function main() {
@@ -181,6 +212,10 @@ async function main() {
       if (video) {
         const outputPath = path.join(videosDir, "dashboard-demo-walkthrough.webm");
         await video.saveAs(outputPath);
+        const rawVideoPath = await video.path();
+        if (rawVideoPath !== outputPath && fs.existsSync(rawVideoPath)) {
+          fs.rmSync(rawVideoPath, { force: true });
+        }
         console.log(`video: ${outputPath}`);
       }
     }

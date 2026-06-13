@@ -2,7 +2,7 @@
 
 ## 项目一句话
 
-`robot-ops-dashboard` 是机器人系统集成与运维监控 Demo 的主入口仓库，用一个轻量 Web Dashboard 展示 AMR/WMS 任务流、IMU / robot state 状态流、Motor / Encoder bench 控制与回传流。
+`robot-ops-dashboard` 是机器人数据链路与评测平台 Demo 的主入口仓库，用一个轻量 Web Dashboard 展示 AMR/WMS 任务流、IMU / robot state 状态流、Motor / Encoder bench 控制与回传流，并通过只读 evaluation 层展示 `run_id`、`dataset_version`、`model_version`、任务成功率、失败样本与 compute 状态。
 
 ## 展示目标
 
@@ -13,6 +13,7 @@
 - 上层运维页面如何稳定读取机器人任务状态。
 - 下位机和 ROS 2 状态如何通过 MQTT 镜像到 Web 端。
 - 受限、显式、低频的 motor bench 命令如何通过 Dashboard backend 下发并回传状态。
+- baseline / mock evaluation 数据如何以只读契约接入实验看板。
 - 网络断开、broker 不可用、上游 API 不可用时，页面如何显示 `disconnected` 或明确错误，而不是白屏。
 
 ## 三条数据链
@@ -35,6 +36,12 @@ Dashboard frontend 通过显式表单调用 `POST /api/robot/motor/cmd`，backen
 
 这不是完整底盘控制器，也不是 Nav2 控制面板。
 
+### 4. Data & Evaluation 展示层
+
+Dashboard backend 通过 `GET /api/evaluation/*` 读取本仓库 `mock/` 下的只读 evaluation 数据，前端在首屏 cockpit 下方展示 `Experiment Context`、`Baseline Evaluation`、`Dataset / Model Registry`、`Failure Sample Review` 和 `Compute / GPU Status`。
+
+当前 evaluation 结果只表示 `mock_evaluation`、`baseline_system_evaluation` 或 `interface_reserved`。本项目没有真实 VLA / RL / world model 训练结果，不把 reserved interface 包装成真实模型成绩。
+
 ## 系统边界
 
 - 前端保持纯 HTML / CSS / JavaScript。
@@ -43,6 +50,8 @@ Dashboard frontend 通过显式表单调用 `POST /api/robot/motor/cmd`，backen
 - AMR 任务集成边界是 HTTP API。
 - IMU 与 robot state 是只读镜像。
 - Motor bench 只允许通过已实现的显式接口低频下发受限命令。
+- Evaluation API 全部为只读 `GET`，不创建 WMS task，不发布 MQTT，不控制机器人。
+- 无真实 GPU 采样时，compute 卡片显示 `not_connected`。
 
 ## 相关仓库
 
@@ -60,8 +69,8 @@ Dashboard frontend 通过显式表单调用 `POST /api/robot/motor/cmd`，backen
 
 ## 建议作品集标题
 
-Robot Operations Dashboard: AMR/WMS, IMU Telemetry and Motor Bench Integration Demo
+Robot Data Link & Evaluation Dashboard: AMR/WMS, micro-ROS Telemetry and Baseline Evaluation Demo
 
 ## 建议作品集描述
 
-一个面向机器人系统集成的运维监控 Dashboard Demo。项目把 AMR Mock WMS 任务流、micro-ROS IMU / robot state 状态流、Motor / Encoder bench 状态与受限命令链路汇聚到同一个 Web 驾驶舱，用于展示从边缘硬件、ROS 2、MQTT、HTTP API 到前端监控页面的端到端集成能力。
+一个面向机器人数据链路与系统 baseline 评测的 Dashboard Demo。项目把 AMR Mock WMS 任务流、micro-ROS IMU / robot state 状态流、Motor / Encoder bench 状态与受限命令链路汇聚到同一个 Web 驾驶舱，并增加只读 evaluation 层展示 run、dataset、model/baseline、失败样本和 compute 状态。当前没有真实 VLA / RL / world model 训练结果，相关区域仅作为接口预留。

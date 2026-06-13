@@ -21,6 +21,95 @@ const DATA_FILES = {
   robotStatus: `${API_BASE_URL}/api/robot/status`,
   motorCommand: `${API_BASE_URL}/api/robot/motor/cmd`,
   simPreview: `${API_BASE_URL}/api/sim/preview`,
+  evaluationRuns: `${API_BASE_URL}/api/evaluation/runs`,
+  evaluationDatasets: `${API_BASE_URL}/api/evaluation/datasets`,
+  evaluationModels: `${API_BASE_URL}/api/evaluation/models`,
+  evaluationFailureCases: `${API_BASE_URL}/api/evaluation/failure-cases`,
+  evaluationCompute: `${API_BASE_URL}/api/evaluation/compute`,
+};
+
+const EVALUATION_FALLBACK_PAYLOADS = {
+  evaluationRuns: {
+    generated_at: "offline",
+    source: "offline_mock_fallback",
+    data: [
+      {
+        run_id: "run_mock_eval_offline_portfolio_001",
+        run_type: "mock_evaluation",
+        scenario: "Offline portfolio fallback for evaluation data layer",
+        dataset_version: "dataset_amr_mock_wms_v0_1",
+        model_version: "nav2_baseline_no_ml_v0",
+        status: "completed",
+        task_total: 5,
+        task_success: 4,
+        task_failed: 1,
+        task_success_rate: 0.8,
+        result_scope: "baseline_system_evaluation_only_not_model_training",
+      },
+    ],
+  },
+  evaluationDatasets: {
+    generated_at: "offline",
+    source: "offline_mock_fallback",
+    data: [
+      {
+        dataset_version: "dataset_amr_mock_wms_v0_1",
+        dataset_type: "amr_task_lifecycle",
+        sample_count: 5,
+        is_mock: true,
+        source_chain: "ROS2/Nav2 task + MQTT telemetry + Dashboard status",
+      },
+    ],
+  },
+  evaluationModels: {
+    generated_at: "offline",
+    source: "offline_mock_fallback",
+    data: [
+      {
+        model_version: "nav2_baseline_no_ml_v0",
+        model_type: "system_baseline",
+        training_status: "not_trained",
+        source: "Nav2 + Mock WMS executor baseline",
+        metrics_available: true,
+        notes: "Baseline system evaluation only. No ML model training result is claimed.",
+      },
+    ],
+  },
+  evaluationFailureCases: {
+    generated_at: "offline",
+    source: "offline_mock_fallback",
+    data: [
+      {
+        failure_case_id: "failcase_mock_wms_nav_timeout_001",
+        run_id: "run_mock_eval_offline_portfolio_001",
+        failure_type: "navigation_timeout_or_blocked_task",
+        severity: "warning",
+        summary: "Mock WMS task entered blocked state during baseline system evaluation.",
+        status: "open",
+      },
+      {
+        failure_case_id: "failcase_mqtt_motor_stale_001",
+        run_id: "run_mock_eval_offline_portfolio_001",
+        failure_type: "telemetry_stale",
+        severity: "info",
+        summary: "Motor bench status can become stale when MQTT publisher is not running.",
+        status: "reviewed",
+      },
+    ],
+  },
+  evaluationCompute: {
+    generated_at: "offline",
+    source: "offline_mock_fallback",
+    data: [
+      {
+        resource_id: "dashboard_offline_mock",
+        resource_type: "cpu",
+        cpu_utilization_pct: null,
+        source: "offline_mock_fallback",
+        last_seen_at: null,
+      },
+    ],
+  },
 };
 
 const WMS_TASK_POINTS = ["station_a", "station_b", "dock_a", "start_zone"];
@@ -208,6 +297,44 @@ const rootNodes = {
   simPreviewConnection: document.querySelector("#simPreviewConnection"),
   simPreviewLastUpdate: document.querySelector("#simPreviewLastUpdate"),
   simPreviewLabel: document.querySelector("#simPreviewLabel"),
+  evaluationMeta: document.querySelector("#evaluationMeta"),
+  evalRunType: document.querySelector("#evalRunType"),
+  evalRunId: document.querySelector("#evalRunId"),
+  evalRunStatus: document.querySelector("#evalRunStatus"),
+  evalDatasetVersion: document.querySelector("#evalDatasetVersion"),
+  evalModelVersion: document.querySelector("#evalModelVersion"),
+  evalPolicyType: document.querySelector("#evalPolicyType"),
+  evalResultScope: document.querySelector("#evalResultScope"),
+  evalScenario: document.querySelector("#evalScenario"),
+  evalBaselineLabel: document.querySelector("#evalBaselineLabel"),
+  evalSuccessRate: document.querySelector("#evalSuccessRate"),
+  evalSuccessRateFill: document.querySelector("#evalSuccessRateFill"),
+  evalTaskSuccess: document.querySelector("#evalTaskSuccess"),
+  evalTaskFailed: document.querySelector("#evalTaskFailed"),
+  evalTaskTotal: document.querySelector("#evalTaskTotal"),
+  evalBaselineNote: document.querySelector("#evalBaselineNote"),
+  evalDatasetList: document.querySelector("#evalDatasetList"),
+  evalModelList: document.querySelector("#evalModelList"),
+  evalFailureMeta: document.querySelector("#evalFailureMeta"),
+  evalFailureList: document.querySelector("#evalFailureList"),
+  evalFailureCasesCount: document.querySelector("#evalFailureCasesCount"),
+  evalTimestampCheck: document.querySelector("#evalTimestampCheck"),
+  evalMissingValueCheck: document.querySelector("#evalMissingValueCheck"),
+  evalSourceCheck: document.querySelector("#evalSourceCheck"),
+  evalMqttDelay: document.querySelector("#evalMqttDelay"),
+  evalStatusTimeout: document.querySelector("#evalStatusTimeout"),
+  evalTaskResult: document.querySelector("#evalTaskResult"),
+  evalRecoveryCount: document.querySelector("#evalRecoveryCount"),
+  evalImuRms: document.querySelector("#evalImuRms"),
+  evalMotorError: document.querySelector("#evalMotorError"),
+  evalPwmOutput: document.querySelector("#evalPwmOutput"),
+  evalFeatureLabel: document.querySelector("#evalFeatureLabel"),
+  evalGpuStatus: document.querySelector("#evalGpuStatus"),
+  evalGpuName: document.querySelector("#evalGpuName"),
+  evalGpuUtilization: document.querySelector("#evalGpuUtilization"),
+  evalGpuMemory: document.querySelector("#evalGpuMemory"),
+  evalCpuUtilization: document.querySelector("#evalCpuUtilization"),
+  evalComputeMeta: document.querySelector("#evalComputeMeta"),
 };
 
 const cachedPayloads = {
@@ -217,6 +344,11 @@ const cachedPayloads = {
   alerts: null,
   robotStatus: null,
   simPreview: null,
+  evaluationRuns: null,
+  evaluationDatasets: null,
+  evaluationModels: null,
+  evaluationFailureCases: null,
+  evaluationCompute: null,
 };
 
 let refreshInFlight = false;
@@ -270,17 +402,37 @@ async function init() {
   refreshInFlight = true;
 
   try {
-    const [tasksResult, devicesResult, alertsResult, robotStatusResult] = await Promise.allSettled([
+    const [
+      tasksResult,
+      devicesResult,
+      alertsResult,
+      robotStatusResult,
+      evaluationRunsResult,
+      evaluationDatasetsResult,
+      evaluationModelsResult,
+      evaluationFailureCasesResult,
+      evaluationComputeResult,
+    ] = await Promise.allSettled([
       fetchJson(DATA_FILES.tasks),
       fetchJson(DATA_FILES.devices),
       fetchJson(DATA_FILES.alerts),
       fetchJson(DATA_FILES.robotStatus),
+      fetchJson(DATA_FILES.evaluationRuns),
+      fetchJson(DATA_FILES.evaluationDatasets),
+      fetchJson(DATA_FILES.evaluationModels),
+      fetchJson(DATA_FILES.evaluationFailureCases),
+      fetchJson(DATA_FILES.evaluationCompute),
     ]);
 
     const failures = [
       syncSection("tasks", tasksResult, renderTasks, rootNodes.tasksMeta, "任务"),
       syncSection("devices", devicesResult, renderDevices, rootNodes.systemMeta, "设备状态"),
       syncSection("alerts", alertsResult, renderAlerts, rootNodes.eventStreamMeta, "告警"),
+      syncSection("evaluationRuns", evaluationRunsResult, renderEvaluationRuns, rootNodes.evaluationMeta, "评测 run"),
+      syncSection("evaluationDatasets", evaluationDatasetsResult, renderEvaluationDatasets, rootNodes.evaluationMeta, "数据集版本"),
+      syncSection("evaluationModels", evaluationModelsResult, renderEvaluationModels, rootNodes.evaluationMeta, "模型版本"),
+      syncSection("evaluationFailureCases", evaluationFailureCasesResult, renderEvaluationFailureCases, rootNodes.evalFailureMeta, "失败样本"),
+      syncSection("evaluationCompute", evaluationComputeResult, renderEvaluationCompute, rootNodes.evalComputeMeta, "算力状态"),
     ].filter(Boolean);
 
     syncRobotStatus(robotStatusResult);
@@ -372,6 +524,22 @@ function syncSection(key, result, renderFn, metaNode, label) {
     return `${label}: ${errorMessage}`;
   }
 
+  const fallbackPayload = getEvaluationFallbackPayload(key);
+  if (fallbackPayload) {
+    cachedPayloads[key] = fallbackPayload;
+    renderFn(fallbackPayload, {
+      fallback: true,
+      errorMessage,
+    });
+    appendEventStreamEntry({
+      key: `${key}-offline-mock-${errorMessage}`,
+      status: "stale",
+      title: `${label} Offline / Mock`,
+      detail: "Evaluation API unavailable; using screenshot-safe mock fallback.",
+    });
+    return `${label}: Offline / Mock fallback (${errorMessage})`;
+  }
+
   if (metaNode) {
     metaNode.textContent = "unavailable";
     metaNode.dataset.state = "error";
@@ -387,6 +555,17 @@ function syncSection(key, result, renderFn, metaNode, label) {
     detail: summarizeErrorForDisplay(errorMessage),
   });
   return `${label}: ${errorMessage}`;
+}
+
+function getEvaluationFallbackPayload(key) {
+  const payload = EVALUATION_FALLBACK_PAYLOADS[key];
+  if (!payload) {
+    return null;
+  }
+  return {
+    ...payload,
+    data: Array.isArray(payload.data) ? payload.data.map((item) => ({ ...item })) : [],
+  };
 }
 
 function syncRobotStatus(result) {
@@ -2181,7 +2360,7 @@ function handleStatusMessage(payload) {
 
 function renderSummary(tasksPayload, devicesPayload, alertsPayload, failures = []) {
   const tasks = Array.isArray(tasksPayload?.data) ? tasksPayload.data : [];
-  const devices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
+  const devices = getLiveDeviceScope(Array.isArray(devicesPayload?.data) ? devicesPayload.data : []);
   const alerts = Array.isArray(alertsPayload?.data) ? alertsPayload.data : [];
 
   const runningTasks = tasks.filter((task) =>
@@ -2362,7 +2541,8 @@ function appendCurrentTaskEvent(currentTask, progress, options = {}) {
 }
 
 function renderDevices(devicesPayload, options = {}) {
-  const devices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
+  const allDevices = Array.isArray(devicesPayload?.data) ? devicesPayload.data : [];
+  const devices = getLiveDeviceScope(allDevices);
   const onlineDevices = devices.filter((device) => device.comm_status === "online").length;
   const warningDevices = devices.filter((device) => device.health_status === "warning").length;
   const criticalDevices = devices.filter((device) => device.health_status === "critical").length;
@@ -2371,7 +2551,8 @@ function renderDevices(devicesPayload, options = {}) {
   const lastUpdate = pickLatestTimestamp(devices.map((device) => device.last_seen_at)) || devicesPayload?.generated_at;
 
   if (rootNodes.systemMeta) {
-    rootNodes.systemMeta.textContent = `${devices.length} devices · ${options.realtime ? "stream" : "http"}`;
+    const scopedLabel = devices.length !== allDevices.length ? `${devices.length}/${allDevices.length}` : String(devices.length);
+    rootNodes.systemMeta.textContent = `${scopedLabel} devices · ${options.realtime ? "stream" : "http"}`;
     rootNodes.systemMeta.dataset.state = options.errorMessage || worstStatus === "critical" ? "error" : "ok";
   }
 
@@ -2413,6 +2594,288 @@ function renderAlerts(alertsPayload, options = {}) {
       detail: summarizeErrorForDisplay(options.errorMessage || "Dashboard backend unavailable."),
     });
   }
+}
+
+function renderEvaluationRuns(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
+function renderEvaluationDatasets(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
+function renderEvaluationModels(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
+function renderEvaluationFailureCases(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
+function renderEvaluationCompute(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
+function renderEvaluationLayer() {
+  const runs = getCachedDataList("evaluationRuns");
+  const datasets = getCachedDataList("evaluationDatasets");
+  const models = getCachedDataList("evaluationModels");
+  const failures = getCachedDataList("evaluationFailureCases");
+  const compute = getCachedDataList("evaluationCompute");
+  const usingOfflineMock = isEvaluationOfflineMock();
+  const currentRun =
+    runs.find((run) => run.run_type === "baseline_system_evaluation") ||
+    runs.find((run) => run.run_type === "mock_evaluation") ||
+    runs[0] ||
+    null;
+  const currentDataset = datasets.find((item) => item.dataset_version === currentRun?.dataset_version) || datasets[0] || null;
+  const currentModel = models.find((item) => item.model_version === currentRun?.model_version) || models[0] || null;
+  const missingSections = [
+    ["runs", runs],
+    ["datasets", datasets],
+    ["models", models],
+    ["failures", failures],
+    ["compute", compute],
+  ].filter(([, items]) => !items.length);
+
+  if (rootNodes.evaluationMeta) {
+    rootNodes.evaluationMeta.textContent = usingOfflineMock
+      ? "Offline / Mock · fallback data · read-only"
+      : missingSections.length
+      ? `degraded · missing ${missingSections.map(([label]) => label).join(", ")}`
+      : `${runs.length} runs · ${datasets.length} datasets · ${models.length} models · read-only`;
+    rootNodes.evaluationMeta.dataset.state = usingOfflineMock || missingSections.length ? "error" : "ok";
+  }
+
+  renderEvaluationContext(currentRun, currentDataset, currentModel);
+  renderEvaluationBaseline(currentRun, currentModel);
+  renderEvaluationQuality(currentRun, currentDataset, failures, compute, usingOfflineMock);
+  renderEvaluationFeatures(currentRun, currentDataset, currentModel, failures);
+}
+
+function renderEvaluationContext(run, dataset, model) {
+  const runType = run?.run_type || "interface_reserved";
+  const runState = evaluationTagState(runType);
+
+  setText(rootNodes.evalRunId, run?.run_id || "--");
+  setHealthNode(rootNodes.evalRunType, evaluationRunTypeLabel(runType), runState);
+  setHealthNode(rootNodes.evalRunStatus, run?.status || "waiting", statusToDataState(run?.status || "unknown"));
+  setText(rootNodes.evalDatasetVersion, run?.dataset_version || dataset?.dataset_version || "-");
+  setText(rootNodes.evalModelVersion, run?.model_version || model?.model_version || "-");
+  setText(rootNodes.evalPolicyType, model?.model_type || runType || "-");
+  setText(rootNodes.evalResultScope, run?.result_scope || "-");
+  setText(rootNodes.evalScenario, run?.scenario || "-");
+}
+
+function renderEvaluationBaseline(run, model) {
+  const ratePercent = formatEvaluationSuccessRate(run?.task_success_rate);
+  const fillPercent = ratePercent.numericValue === undefined ? 0 : ratePercent.numericValue;
+  const isReserved = run?.run_type === "interface_reserved" || run?.task_success_rate === null || run?.task_success_rate === undefined;
+
+  setText(rootNodes.evalSuccessRate, ratePercent.label);
+  setWidthPercent(rootNodes.evalSuccessRateFill, fillPercent);
+  setText(rootNodes.evalTaskSuccess, run ? formatCountValue(run.task_success) : "--");
+  setText(rootNodes.evalTaskFailed, run ? formatCountValue(run.task_failed) : "--");
+  setText(rootNodes.evalTaskTotal, run ? formatCountValue(run.task_total) : "--");
+  setHealthNode(
+    rootNodes.evalBaselineLabel,
+    isReserved ? "reserved" : run?.run_type === "mock_evaluation" ? "mock" : "baseline",
+    isReserved ? "reserved" : run?.run_type === "mock_evaluation" ? "mock" : "baseline"
+  );
+  setText(
+    rootNodes.evalBaselineNote,
+    model?.notes || (isReserved ? "reserved interface only; no model training result" : "baseline/system evaluation only")
+  );
+}
+
+function renderEvaluationQuality(run, dataset, failures, compute, usingOfflineMock) {
+  const openCases = failures.filter((item) => item.status === "open").length;
+  const hasTelemetryStale = failures.some((item) => item.failure_type === "telemetry_stale");
+  const hasTimeout = failures.some((item) => String(item.failure_type || "").includes("timeout"));
+  const sourceLabel = usingOfflineMock ? "mock" : dataset?.is_mock ? "mock" : dataset?.source_chain ? "pass" : "pending";
+  const cpu = compute.find((item) => item.resource_type === "cpu") || null;
+
+  if (rootNodes.evalFailureMeta) {
+    rootNodes.evalFailureMeta.textContent = usingOfflineMock
+      ? "Offline / Mock"
+      : `${failures.length} cases · open ${openCases}`;
+    rootNodes.evalFailureMeta.dataset.state = usingOfflineMock || openCases > 0 ? "error" : "ok";
+  }
+
+  setText(rootNodes.evalFailureCasesCount, `${failures.length} total / ${openCases} open`);
+  setText(rootNodes.evalTimestampCheck, run?.started_at || run?.finished_at || usingOfflineMock ? "pass" : "pending");
+  setText(rootNodes.evalMissingValueCheck, run && dataset ? "pass" : "pending");
+  setText(rootNodes.evalSourceCheck, sourceLabel);
+  setText(rootNodes.evalMqttDelay, hasTelemetryStale ? "stale sample" : cpu?.last_seen_at ? "tracked" : "mock");
+  setText(rootNodes.evalStatusTimeout, hasTimeout ? "1 case" : "none");
+}
+
+function renderEvaluationFeatures(run, dataset, model, failures) {
+  const failedCount = toFiniteNumber(run?.task_failed) || 0;
+  const recoveryCount = failures.filter((item) => item.status === "reviewed").length;
+  const featureLabel =
+    run?.run_type === "baseline_system_evaluation"
+      ? "baseline_eval"
+      : run?.run_type === "mock_evaluation"
+      ? "mock_eval"
+      : "reserved";
+
+  setText(rootNodes.evalTaskResult, failedCount > 0 ? "mixed" : run ? "success" : "-");
+  setText(rootNodes.evalRecoveryCount, String(recoveryCount));
+  setText(rootNodes.evalImuRms, dataset?.source_chain ? "mapped" : "mock");
+  setText(rootNodes.evalMotorError, failures.some((item) => item.failure_type === "telemetry_stale") ? "stale" : "mapped");
+  setText(rootNodes.evalPwmOutput, model?.model_type === "system_baseline" ? "bench_ref" : "mapped");
+  setText(rootNodes.evalFeatureLabel, featureLabel);
+}
+
+function renderEvaluationRegistry(datasets, models) {
+  if (rootNodes.evalDatasetList) {
+    rootNodes.evalDatasetList.innerHTML = datasets.length
+      ? datasets
+          .slice(0, 4)
+          .map(
+            (dataset) => `
+              <li>
+                <strong>${escapeHtml(dataset.dataset_version || "-")}</strong>
+                <span>${escapeHtml(dataset.dataset_type || "-")} · ${escapeHtml(String(dataset.sample_count ?? "-"))} samples</span>
+                <em>${escapeHtml(dataset.is_mock ? "mock" : "external")} · ${escapeHtml(dataset.storage_ref || "no storage")}</em>
+              </li>
+            `
+          )
+          .join("")
+      : '<li class="empty-state">datasets disconnected</li>';
+  }
+
+  if (rootNodes.evalModelList) {
+    rootNodes.evalModelList.innerHTML = models.length
+      ? models
+          .slice(0, 4)
+          .map(
+            (model) => `
+              <li>
+                <strong>${escapeHtml(model.model_version || "-")}</strong>
+                <span>${escapeHtml(model.model_type || "-")} · ${escapeHtml(model.training_status || "-")}</span>
+                <em>${escapeHtml(model.metrics_available ? "metrics available" : "no metrics")} · ${escapeHtml(model.source || "-")}</em>
+              </li>
+            `
+          )
+          .join("")
+      : '<li class="empty-state">models disconnected</li>';
+  }
+}
+
+function renderEvaluationFailures(failures) {
+  if (rootNodes.evalFailureMeta) {
+    const openCases = failures.filter((item) => item.status === "open").length;
+    rootNodes.evalFailureMeta.textContent = `${failures.length} cases · open ${openCases}`;
+    rootNodes.evalFailureMeta.dataset.state = openCases > 0 ? "error" : "ok";
+  }
+
+  if (!rootNodes.evalFailureList) {
+    return;
+  }
+
+  rootNodes.evalFailureList.innerHTML = failures.length
+    ? failures
+        .slice(0, 4)
+        .map(
+          (failure) => `
+            <li class="${escapeHtml(failure.severity || "info")}">
+              <span class="status-dot ${statusToDotState(failure.severity === "warning" ? "warning" : failure.severity === "critical" ? "critical" : "info")}"></span>
+              <div>
+                <strong>${escapeHtml(failure.failure_case_id || "-")}</strong>
+                <p>${escapeHtml(failure.summary || "-")}</p>
+                <em>${escapeHtml(failure.run_id || "-")} · ${escapeHtml(failure.failure_type || "-")}</em>
+              </div>
+            </li>
+          `
+        )
+        .join("")
+    : '<li class="empty-state">failure samples disconnected</li>';
+}
+
+function renderEvaluationComputeStatus(compute) {
+  const gpu = compute.find((item) => item.resource_type === "gpu") || null;
+  const cpu = compute.find((item) => item.resource_type === "cpu") || null;
+  const gpuStatus = gpu?.gpu_status || "not_connected";
+  const gpuConnected = gpuStatus === "connected";
+
+  setHealthNode(rootNodes.evalGpuStatus, gpuStatus, gpuConnected ? "baseline" : "reserved");
+  setText(rootNodes.evalGpuName, gpu?.gpu_name || "not connected");
+  setText(rootNodes.evalGpuUtilization, formatNullablePercent(gpu?.gpu_utilization_pct));
+  setText(rootNodes.evalGpuMemory, formatNullableMemory(gpu?.gpu_memory_used_mb));
+  setText(rootNodes.evalCpuUtilization, formatNullablePercent(cpu?.cpu_utilization_pct));
+
+  if (rootNodes.evalComputeMeta) {
+    const updatedAt = pickLatestTimestamp(compute.map((item) => item.last_seen_at));
+    rootNodes.evalComputeMeta.textContent = `source: ${gpu?.source || cpu?.source || "interface_reserved"} · updated ${updatedAt ? formatDate(updatedAt) : "not connected"}`;
+    rootNodes.evalComputeMeta.dataset.state = gpuConnected ? "ok" : "error";
+  }
+}
+
+function getCachedDataList(key) {
+  return Array.isArray(cachedPayloads[key]?.data) ? cachedPayloads[key].data : [];
+}
+
+function isEvaluationOfflineMock() {
+  return [
+    "evaluationRuns",
+    "evaluationDatasets",
+    "evaluationModels",
+    "evaluationFailureCases",
+    "evaluationCompute",
+  ].some((key) => cachedPayloads[key]?.source === "offline_mock_fallback");
+}
+
+function evaluationTagState(runType) {
+  if (runType === "baseline_system_evaluation") {
+    return "baseline";
+  }
+  if (runType === "mock_evaluation") {
+    return "mock";
+  }
+  return "reserved";
+}
+
+function evaluationRunTypeLabel(runType) {
+  if (runType === "baseline_system_evaluation") {
+    return "baseline";
+  }
+  if (runType === "mock_evaluation") {
+    return "mock";
+  }
+  return "reserved";
+}
+
+function formatEvaluationSuccessRate(value) {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue === undefined) {
+    return {
+      label: "reserved",
+      numericValue: undefined,
+    };
+  }
+
+  const percent = numericValue <= 1 ? numericValue * 100 : numericValue;
+  return {
+    label: `${Math.round(clampPercent(percent))}%`,
+    numericValue: clampPercent(percent),
+  };
+}
+
+function formatCountValue(value) {
+  const numericValue = toFiniteNumber(value);
+  return numericValue === undefined ? "--" : String(Math.round(numericValue)).padStart(2, "0");
+}
+
+function formatNullablePercent(value) {
+  const numericValue = toFiniteNumber(value);
+  return numericValue === undefined ? "--" : `${Math.round(numericValue)}%`;
+}
+
+function formatNullableMemory(value) {
+  const numericValue = toFiniteNumber(value);
+  return numericValue === undefined ? "--" : `${Math.round(numericValue)} MB`;
 }
 
 function renderConnectionStatus(isOnline, message) {
@@ -2563,7 +3026,7 @@ function renderWebSocketStatus(isOnline, message) {
 }
 
 function refreshLinkBoard() {
-  const devices = Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : [];
+  const devices = getLiveDeviceScope(Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : []);
   const mqttConnection = String(cachedPayloads.robotStatus?.connection?.status || "").toLowerCase();
   const imuView = buildImuViewModel(latestImuSnapshot);
   const motorView = buildMotorViewModel(latestMotorSnapshot);
@@ -2572,7 +3035,11 @@ function refreshLinkBoard() {
   const backendState = transportState.backendConnected ? "online" : "offline";
   const microRosSummary = summarizeDeviceGroup(devices, (device) =>
     String(device?.transport || "").toLowerCase() === "micro_ros" ||
-    String(device?.transport || "").toLowerCase() === "microros"
+    String(device?.transport || "").toLowerCase() === "microros" ||
+    String(device?.metrics?.source || "").toLowerCase() === "micro_ros" ||
+    String(device?.metrics?.ros_topic || "").startsWith("/") ||
+    hasDeviceLabel(device, "robot/imu") ||
+    hasDeviceLabel(device, "robot/state")
   );
   const batterySummary = summarizeDeviceGroup(
     devices,
@@ -2713,6 +3180,29 @@ function summarizeDeviceGroup(devices, predicate) {
     return { label: "Warning", state: "stale" };
   }
   return { label: "Online", state: "online" };
+}
+
+function getLiveDeviceScope(devices) {
+  const liveDevices = devices.filter((device) => !isFutureMockDevice(device));
+  const hasLiveMqttMirror = liveDevices.some(
+    (device) =>
+      String(device?.device_id || "").startsWith("mqtt_") ||
+      hasDeviceLabel(device, "mqtt") ||
+      hasDeviceLabel(device, "robot/imu") ||
+      hasDeviceLabel(device, "robot/state") ||
+      hasDeviceLabel(device, "robot/motor/status")
+  );
+  return hasLiveMqttMirror ? liveDevices : devices;
+}
+
+function isFutureMockDevice(device) {
+  const labels = Array.isArray(device?.labels) ? device.labels.map((label) => String(label).toLowerCase()) : [];
+  return labels.some((label) => label.startsWith("future_"));
+}
+
+function hasDeviceLabel(device, label) {
+  const labels = Array.isArray(device?.labels) ? device.labels : [];
+  return labels.some((item) => String(item).toLowerCase() === String(label).toLowerCase());
 }
 
 function setHealthNode(node, label, state) {

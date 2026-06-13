@@ -107,7 +107,57 @@ AI 扩展引入后，建议重点关注：
 - YOLO 检测结果与原图关联正确性
 - 人工确认流程是否保留
 
-## 7. 验收口径
+## 7. 作品集 Evaluation 层测试计划
+
+当前已新增只读 evaluation API 与前端 `Data & Evaluation Layer`，测试重点是防止 mock/baseline/reserved 数据被误读为真实训练结果。
+
+### 7.1 Mock JSON 合法性
+
+```bash
+python3 -m json.tool mock/sample_evaluation_runs.json >/dev/null
+python3 -m json.tool mock/sample_dataset_versions.json >/dev/null
+python3 -m json.tool mock/sample_model_versions.json >/dev/null
+python3 -m json.tool mock/sample_failure_cases.json >/dev/null
+python3 -m json.tool mock/sample_compute_usage.json >/dev/null
+```
+
+检查点：
+
+- `run_type` 只出现 `mock_evaluation`、`baseline_system_evaluation`、`interface_reserved`。
+- `vla_interface_reserved` 的 `training_status` 必须是 `reserved_only`。
+- 无真实 GPU 采样时，`gpu_status=not_connected`，GPU 数值字段为 `null`。
+
+### 7.2 API 验证
+
+```bash
+curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/runs | python3 -m json.tool
+curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/datasets | python3 -m json.tool
+curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/models | python3 -m json.tool
+curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/failure-cases | python3 -m json.tool
+curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/compute | python3 -m json.tool
+```
+
+检查点：
+
+- 所有接口为只读 `GET`。
+- 响应沿用 `generated_at`、`source`、`data` envelope。
+- 接口不触发 WMS task creation，不发布 MQTT，不依赖 ROS 2 / Nav2 / Gazebo。
+
+### 7.3 前端展示验证
+
+```bash
+node --check frontend/app.js
+npm run capture:screenshots
+```
+
+检查点：
+
+- 首页首屏 cockpit 不被 evaluation 区域挤乱。
+- 第二屏 `Data & Evaluation Layer` 能看到 `run_id`、`dataset_version`、`model_version`、任务成功率、失败样本与 GPU 状态。
+- 页面明确显示 `baseline`、`mock`、`reserved`、`not_connected` 等标签。
+- backend 不可用时，前端显示 disconnected 或明确错误状态，不白屏。
+
+## 8. 验收口径
 
 当前阶段可接受的最小验收标准：
 
@@ -117,9 +167,10 @@ AI 扩展引入后，建议重点关注：
 4. 最小 Mock WMS task proxy 具备前端表单、curl 与 backend 单元测试验证方式
 5. MQTT 状态接入具备 API 与 mock publisher 验证方式
 6. `POST /api/robot/motor/cmd` 具备 payload 限幅、stop 优先级和 publish 错误处理测试
-7. Mock 数据可被直接用于演示或后续联调
+7. Evaluation mock 数据和 API 可被直接用于作品集展示
+8. Evaluation 页面明确区分 mock、baseline 与 reserved，不虚构真实训练结果
 
-## 8. 当前阶段不测试的内容
+## 9. 当前阶段不测试的内容
 
 V0.1 不测试以下内容，因为尚未实现：
 
@@ -128,3 +179,5 @@ V0.1 不测试以下内容，因为尚未实现：
 - 真实 HTTP 接口联调
 - 真实 MQTT 连接
 - 真实 AI 推理结果接入
+- 真实 VLA / RL / world model 训练结果
+- 真实 GPU 训练任务或 GPU 利用率采样
