@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 const { chromium } = require("playwright");
 
 const rootDir = path.resolve(__dirname, "..");
@@ -17,6 +18,10 @@ const options = {
   recordMs: Number(process.env.RECORD_MS || 75000),
   dispatch: false,
   motorDemo: false,
+  motorDelayMs: Number(process.env.MOTOR_DEMO_DELAY_MS || 30000),
+  wmsDemo: false,
+  wmsDbPath: process.env.AMR_DB_PATH || "/tmp/robot_ops_full_link/mock_wms.db",
+  wmsTarget: process.env.WMS_DEMO_TARGET || "station_a",
 };
 
 function usage() {
@@ -32,10 +37,14 @@ function usage() {
   --record-ms N          录屏时长，默认：${options.recordMs}
   --dispatch             录屏期间点击 Task Dispatch，会创建 Mock WMS task
   --motor-demo           录屏期间调节 Motor slider 并点击 SEND CMD
+  --motor-delay-ms N     Motor demo 延迟，默认：${options.motorDelayMs}
+  --wms-demo             录屏期间执行上游 AMR Mock WMS station task
+  --wms-db PATH          WMS demo SQLite DB，默认：${options.wmsDbPath}
+  --wms-target NAME      WMS demo 目标点，默认：${options.wmsTarget}
   -h, --help             显示帮助
 
 默认不会触发任务创建或电机命令。需要录制完整联动时，先启动 backend/frontend，
-再显式传入 --dispatch 或 --motor-demo。`);
+再显式传入 --dispatch、--wms-demo 或 --motor-demo。`);
 }
 
 function parseArgs(argv) {
@@ -68,6 +77,18 @@ function parseArgs(argv) {
       case "--motor-demo":
         options.motorDemo = true;
         break;
+      case "--motor-delay-ms":
+        options.motorDelayMs = Number(argv[++index]);
+        break;
+      case "--wms-demo":
+        options.wmsDemo = true;
+        break;
+      case "--wms-db":
+        options.wmsDbPath = argv[++index];
+        break;
+      case "--wms-target":
+        options.wmsTarget = argv[++index];
+        break;
       case "-h":
       case "--help":
         usage();
@@ -77,6 +98,36 @@ function parseArgs(argv) {
         throw new Error(`未知参数：${arg}`);
     }
   }
+}
+
+function startWmsDemoProcess() {
+  const scriptPath = path.join(rootDir, "scripts", "run_amr_dashboard_recording_demo.sh");
+  const child = spawn(
+    "bash",
+    [
+      scriptPath,
+      "--skip-launch",
+      "--db",
+      options.wmsDbPath,
+      options.wmsTarget,
+    ],
+    {
+      cwd: rootDir,
+      env: {
+        ...process.env,
+        AMR_API_PORT: "8010",
+        AMR_API_BASE_URL: "http://127.0.0.1:8010",
+        DASHBOARD_API_BASE_URL: "http://127.0.0.1:9000",
+        AMR_DB_PATH: options.wmsDbPath,
+      },
+      stdio: "inherit",
+    }
+  );
+
+  child.on("exit", (code) => {
+    console.log(`wms-demo: exited with code ${code}`);
+  });
+  return child;
 }
 
 function ensureDir(dirPath) {
@@ -126,6 +177,32 @@ async function captureScreenshots(page, screenshotsDir) {
     fullPage: false,
   });
 
+  await safeScrollIntoView(page, ".motor-flow-card");
+  await page.waitForTimeout(1200);
+  if (options.motorDemo) {
+    const slider = page.locator("#motorTargetSpeedSlider");
+    if (await slider.count()) {
+      await slider.fill("0.08");
+      const timeoutInput = page.locator("#motorTimeoutInput");
+      if (await timeoutInput.count()) {
+        await timeoutInput.fill("2500");
+      }
+      await page.waitForTimeout(1000);
+      await safeClick(page, "#motorApplyButton");
+      await page.waitForTimeout(1600);
+    }
+  }
+  await page.screenshot({
+    path: path.join(screenshotsDir, "dashboard-motor-curve-1440x900.png"),
+    fullPage: false,
+  });
+  if (options.motorDemo) {
+    await safeClick(page, "#motorStopButton");
+    await page.waitForTimeout(1200);
+  }
+
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.waitForTimeout(500);
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.waitForTimeout(1000);
   await page.screenshot({
@@ -141,10 +218,9 @@ async function captureScreenshots(page, screenshotsDir) {
   });
 
   await page.setViewportSize({ width: 1366, height: 768 });
-  await safeScrollIntoView(page, ".failure-card");
-  await page.screenshot({
-    path: path.join(screenshotsDir, "dashboard-failure-cases-1366x768.png"),
-    fullPage: false,
+  await safeScrollIntoView(page, ".portfolio-evaluation-grid");
+  await page.locator(".portfolio-evaluation-grid").screenshot({
+    path: path.join(screenshotsDir, "dashboard-failure-cases-crop.png"),
   });
 }
 
@@ -160,14 +236,31 @@ async function runRecordedWalkthrough(page) {
     await safeClick(page, "#wmsSubmitButton");
   }
 
-  await page.waitForTimeout(8000);
+  if (options.wmsDemo) {
+    await page.waitForTimeout(2500);
+    startWmsDemoProcess();
+  }
+
+  await page.waitForTimeout(options.motorDemo ? options.motorDelayMs : 8000);
 
   if (options.motorDemo) {
     const slider = page.locator("#motorTargetSpeedSlider");
     if (await slider.count()) {
       await slider.fill("0.08");
+      const timeoutInput = page.locator("#motorTimeoutInput");
+      if (await timeoutInput.count()) {
+        await timeoutInput.fill("2500");
+      }
       await page.waitForTimeout(1000);
       await safeClick(page, "#motorApplyButton");
+      await page.waitForTimeout(2200);
+      await page.screenshot({
+        path: path.join(options.artifactsDir, "screenshots", "dashboard-motor-curve-1440x900.png"),
+        fullPage: false,
+      });
+      await page.waitForTimeout(2000);
+      await safeClick(page, "#motorStopButton");
+      await page.waitForTimeout(2500);
     }
   }
 

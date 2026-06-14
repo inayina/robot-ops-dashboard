@@ -24,7 +24,7 @@ Dashboard 页面规划服务于两个关键词：
 - `Event Log` 显示最近 8 条状态事件，优先记录当前 WMS 任务状态变化、任务下发、电机 bench 命令、告警和连接异常；正常 WebSocket 心跳不再作为泛化事件占用列表空间。
 - `Simulation Preview` 通过 `GET /api/sim/preview` 读取连接状态。未配置预览流时显示 Gazebo path view 未连接占位画面；配置 `SIM_PREVIEW_MJPEG_URL` 或 `GAZEBO_CAMERA_MJPEG_URL` 后，前端自动使用返回的 `/api/sim/stream` 切换到真实 MJPEG 画面。该区域不嵌入 RViz、不做 noVNC、不做 WebRTC；上游画面可以是 Gazebo 顶视图，也可以是带 path 的 RViz 视图。
 - 首页首屏仍按固定 cockpit 组织，AMR / IMU / Motor / Simulation Preview 主卡片保持一屏可见；首屏下方新增 `Data & Evaluation Layer`，页面允许纵向滚动到第二屏用于作品集截图。卡片使用固定 header/body/footer 分层，长文本统一单行裁剪，NetworkError 等长错误只进入 Event Log，主卡片保留短状态和离线预览占位。
-- `Evaluation & ML-ready Data Layer` 固定为只读展示区，面向作品集截图组织为 Hero、纵向流程图、`Experiment Record`、`Failure & Quality Checks`、`ML-ready Features` 三张卡片和 `Current Scope` 说明。该区域通过 `GET /api/evaluation/*` 读取 mock/baseline/reserved 数据；接口不可用时使用前端 `Offline / Mock` fallback，不写数据库、不发布 MQTT、不创建 WMS task。
+- `System Evaluation & Validation Layer` 固定为只读展示区，面向作品集截图组织为 Hero、纵向流程图、`Experiment Record`、`Failure & Quality Checks`、`ML-ready Features` 三张卡片和 `Current Scope` 说明。该区域通过 `GET /api/evaluation/*` 读取 mock/baseline/reserved 数据；接口不可用时使用前端 `Offline / Mock` fallback，不写数据库、不发布 MQTT、不创建 WMS task。
 
 建议模块：
 

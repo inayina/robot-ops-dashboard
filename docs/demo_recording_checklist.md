@@ -1,8 +1,8 @@
 # Demo 录屏与截图检查清单
 
-本文用于正式录屏前人工彩排。目标是确保作品集材料清楚展示 AMR 仿真任务、IMU / Motor 硬件状态链路、MQTT / HTTP / WebSocket 数据链路，以及 Dashboard Evaluation Summary。
+本文用于正式录屏前人工彩排。目标是把 `robot-ops-dashboard` 录成“可截图、可讲述、边界清楚”的作品集 demo：AMR/WMS task、IMU/Motor 状态链路、Simulation Preview 和 System Evaluation & Validation Layer 都能被看见。
 
-## 1. 录屏前安全确认
+## 1. 安全确认
 
 开始任何真实硬件画面前，先人工确认：
 
@@ -10,161 +10,134 @@
 - 不修改 PlatformIO 配置。
 - 电机已悬空或可靠固定。
 - 供电电压、电流限制和接线极性已确认。
-- TB6612 / ESP32 / STM32 / 编码器接线稳固。
 - STOP 命令或断电方式随时可用。
 - 本次只展示 N20 单电机 bench，不宣称整车运动。
-- Dashboard motor command 只走 `POST /api/robot/motor/cmd`。
+- Dashboard motor command 只走 `POST /api/robot/motor/cmd`，且不长时间运行电机。
 
-## 2. 服务与端口检查
+## 2. 推荐启动顺序
 
-推荐端口：
+本次最终验证使用 AMR Mock WMS `:8010`。如果你的本机 AMR API 使用默认 `:8000`，把下面环境变量改回 `http://127.0.0.1:8000`。
 
-| 服务 | 地址 | 用途 |
-| --- | --- | --- |
-| AMR Mock WMS API | `http://127.0.0.1:8000` | 上游任务 API |
-| Frontend static server | `http://127.0.0.1:8001/frontend/` | 浏览器页面 |
-| MQTT broker | `127.0.0.1:1883` | robot telemetry / motor command |
-| micro-ROS Agent UDP | `8888` | ESP32-S3 -> ROS 2 |
-| Dashboard backend | `http://127.0.0.1:9000` | `/api/*` 与 `/ws/status` |
-
-建议启动顺序：
-
-1. AMR Mock WMS API：提供 `/health`、`/tasks` 和 task result writeback。
-2. MQTT broker：承接 `robot/imu`、`robot/state`、`robot/motor/status`、`robot/motor/cmd`。
-3. micro-ROS Agent：仅在真实 ESP32-S3 已准备好时启动。
-4. ROS 2 -> MQTT bridge：镜像 IMU、robot state、motor status，并桥接 motor cmd。
-5. Dashboard backend：推荐 `ROBOT_OPS_TASK_SOURCE=amr_http`。
-6. Dashboard frontend：打开静态页面。
-7. 可选 Gazebo / RViz / Nav2：仅用于 AMR 仿真画面。
-8. 可选 motor bench：必须先完成硬件安全确认。
-
-只读检查：
+1. AMR Mock WMS API。
+2. MQTT broker。
+3. 可选 micro-ROS Agent 和 ROS 2 -> MQTT bridge。
+4. Dashboard backend：
 
 ```bash
-curl --noproxy '*' http://127.0.0.1:9000/health
-curl --noproxy '*' http://127.0.0.1:9000/api/tasks
-curl --noproxy '*' http://127.0.0.1:9000/api/robot/status
-curl --noproxy '*' http://127.0.0.1:9000/api/evaluation/summary
-curl --noproxy '*' http://127.0.0.1:8001/frontend/
+ROBOT_OPS_TASK_SOURCE=amr_http \
+AMR_API_BASE_URL=http://127.0.0.1:8010 \
+.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 9000
+```
+
+5. Dashboard frontend：
+
+```bash
+.venv/bin/python -m http.server 8001 --bind 127.0.0.1
+```
+
+6. 打开：
+
+```text
+http://127.0.0.1:8001/frontend/
+```
+
+7. 验证：
+
+```bash
 ./scripts/verify_demo_readiness.sh
 ```
 
-## 3. 画面准备
+期望结果：`Readiness result: PASS`。可选写接口默认跳过；录屏前如需验证 Task Dispatch，可只手动 POST `/api/wms/tasks`，不要自动跑 motor command。
 
-浏览器：
+## 3. 必测接口
 
-- 打开 `http://127.0.0.1:8001/frontend/`。
-- 关闭无关标签页。
-- 保持页面宽度为 `1440x900` 或 `1366x768`。
-- 不展示隐私路径、token、Wi-Fi 信息或串口设备敏感信息。
+| 接口 | 录屏前要求 |
+| --- | --- |
+| `GET /health` | HTTP 200, `status=ok` |
+| `GET /api/tasks` | HTTP 200，展示 AMR 或 mock task source |
+| `GET /api/robot/status` | HTTP 200，IMU/Motor 有数据或明确 no data / disconnected |
+| `GET /api/sim/preview` | HTTP 200，实时 stream 或 Offline / Mock |
+| `GET /api/evaluation/summary` | 包含 `run_id`、`dataset_version`、`model_version`、`task_success_rate`、`failure_cases`、`quality_checks`、`gpu_usage` |
+| `WebSocket /ws/status` | 返回 `dashboard_status` |
+| `GET /api/wms/tasks` | AMR Mock WMS 可用时通过 |
+| `POST /api/wms/tasks` | 手动验证一次 Task Dispatch 即可 |
+| `POST /api/robot/motor/cmd` | 仅真实 bench 安全确认后手动验证 |
 
-Dashboard 首屏应能看到：
+## 4. Dashboard 首屏检查
 
-- 顶部系统状态。
-- Robot Link。
-- IMU 姿态展示。
-- Motor Bench Flow。
-- Current Task Execution。
-- Task Dispatch。
-- Simulation Preview。
-- Event Stream。
+首屏应稳定显示：
 
-第二屏应能看到：
+- 顶部 Backend / Stream / ROS 2 / micro-ROS / MQTT 状态。
+- 左侧 Robot Link 和 Event Log。
+- 中间 IMU 姿态展示。
+- 中间数据流：单向遥测、任务 HTTP、Motor Bench。
+- 中间 Motor Bench Flow。
+- 右侧 Current Task Execution。
+- 右侧 Task Dispatch。
+- 右侧 Simulation Preview，未接入实时流时必须显示 Offline / Mock Preview。
 
-- Evaluation & ML-ready Data Layer。
+## 5. System Evaluation & Validation 检查
+
+第二屏应稳定显示：
+
+- `System Evaluation & Validation Layer`。
+- `Data Sources -> Evaluation Run -> Quality Checks -> ML-ready Export`。
 - `run_id`。
 - `dataset_version`。
 - `model_version`。
-- success rate。
-- failure cases。
-- quality checks。
-- compute / GPU status。
+- `task_success_rate`。
+- `failure_cases`。
+- `quality_checks`。
+- Compute / GPU：未接入时显示 `not_connected`、`--`、`reserved`。
+- Current Scope：baseline / mock / reserved，不宣称真实训练。
 
-## 4. 必选截图
+## 6. 截图顺序
 
-保存到 `artifacts/screenshots/`，需要导出作品集时再复制到 `screenshots/`。
+建议保存到 `artifacts/screenshots/`：
 
-- `dashboard-overview-1440x900.png`：Dashboard 总览。
-- `dashboard-task-dispatch-1440x900.png`：Task Dispatch 与 Current Task Execution。
-- `dashboard-robot-status-1440x900.png`：Robot Link / IMU / Motor 状态。
-- `dashboard-evaluation-summary-1440x900.png`：Evaluation Summary。
-- `dashboard-ml-ready-data-layer-1440x900.png`：ML-ready Data Layer。
-- `api-health-and-summary-terminal.png`：API 返回结果。
-- `terminal-integration-status.png`：AMR API / MQTT / micro-ROS / bridge / Dashboard 状态。
+1. `dashboard-overview-1440x900.png`：Dashboard 总览。
+2. `dashboard-task-dispatch-1440x900.png`：Task Dispatch + Current Task Execution。
+3. `dashboard-robot-status-1440x900.png`：Robot Link + IMU + Motor。
+4. `dashboard-motor-curve-1440x900.png`：Motor Bench Flow，`0.08 m/s` 短时阶跃与 STOP 前曲线。
+5. `dashboard-sim-preview-1440x900.png`：Gazebo/RViz Preview，小窗可为 Offline / Mock。
+6. `dashboard-evaluation-platform-1440x900.png`：System Evaluation & Validation Layer。
+7. `api-health-and-summary-terminal.png`：readiness 或 curl 输出。
+8. 可选 `amr-gazebo-rviz-task-result.png`：外部 Gazebo/RViz 画面。
 
-可选截图：
+## 7. 60 秒录屏分镜
 
-- `amr-gazebo-rviz-task-result.png`：Gazebo / RViz / task result。
-- `dashboard-disconnected-state.png`：disconnected / stale 状态。
+0-8s：Dashboard 总览
+展示 cockpit 首屏。旁白：这是机器人数据链路与评测 Dashboard，汇总 AMR task、硬件遥测、motor bench 和 baseline evaluation。
 
-## 5. 60 秒 HR 版录屏脚本
+8-20s：Task Dispatch
+展示 `Task Dispatch`，手动发一个 `start_zone -> station_a` 任务。旁白：Dashboard 通过 HTTP adapter 进入 AMR Mock WMS；Nav2/Gazebo 执行属于上游 AMR 仓库。
 
-0-8s：Dashboard 总览  
-画面停在首屏 cockpit。  
-旁白：这是机器人数据链路与评测平台入口，用一个 Dashboard 汇总 AMR 任务、硬件遥测、motor bench 和 baseline evaluation。
+20-32s：Robot Status / IMU
+展示 Robot Link、IMU 姿态、MQTT/WebSocket 状态。旁白：IMU/robot state 是只读镜像；本次录屏已收到 live telemetry，断链时会显示 no data / disconnected。
 
-8-20s：AMR / WMS task  
-画面展示 Task Dispatch 或 Current Task Execution。  
-旁白：任务通过 Dashboard backend HTTP proxy 进入 AMR Mock WMS，Nav2 / Gazebo 执行后再回写任务状态。
+32-42s：Simulation Preview
+展示 Simulation Preview。旁白：这是 Dashboard 内嵌的 RViz Path View / Gazebo preview；没有实时 MJPEG 时显示 Offline / Mock，不是真实相机流，也不是 Playwright 录到的桌面原生窗口。
 
-20-32s：IMU / robot state  
-画面聚焦 IMU 姿态和 Robot Link。  
-旁白：STM32 / ESP32-S3 的状态经 micro-ROS 到 ROS 2，再镜像到 MQTT，Dashboard 只读展示。
+42-52s：Motor Bench
+展示 Motor Bench Flow 和 STOP 入口。旁白：这里只是 N20 单电机 bench 的低频受限命令链路，不是完整底盘控制器。
 
-32-44s：Motor / Encoder bench  
-画面聚焦 Motor Bench Flow。  
-旁白：这里是 N20 单电机 bench 的低频受限命令链路，不是完整底盘控制器。
+52-60s：System Evaluation & Validation
+滚到 Evaluation 第二屏。旁白：这里展示 baseline/mock evaluation、failure cases、quality checks 和 GPU reserved 状态，不宣称真实 VLA/RL/world model 训练结果。
 
-44-55s：Evaluation & ML-ready Data Layer  
-画面滚动到第二屏。  
-旁白：评测层把 run、dataset、model baseline、失败样本和质量检查组织为只读摘要。
-
-55-60s：收束  
-画面回到总览或停在 Evaluation Summary。  
-旁白：当前展示真实系统集成能力和 baseline / mock evaluation 结构，不宣称真实 VLA / RL / world model 训练结果。
-
-## 6. 2-3 分钟技术版录屏脚本
-
-0-20s：系统架构  
-说明三个仓库职责：AMR 仿真任务链路、硬件 digital twin 状态链路、Dashboard 聚合与 evaluation 展示。
-
-20-55s：AMR 链路  
-展示 AMR Mock WMS API、任务创建/查询、Nav2 / Gazebo 执行、task result writeback、Dashboard task 映射。
-
-55-90s：IMU / robot state 链路  
-展示 micro-ROS Agent、ROS 2 IMU topic、MQTT `robot/imu` / `robot/state`、Dashboard `/api/robot/status` 和前端 IMU 状态。
-
-90-125s：Motor / Encoder bench 链路  
-展示 `POST /api/robot/motor/cmd` 的受限命令、MQTT `robot/motor/cmd`、ROS 2 `/motor/cmd`、encoder status 和 STOP 口径。
-
-125-155s：Evaluation Summary  
-展示 `run_id`、`dataset_version`、`model_version`、success rate、failure cases、quality checks、compute status。
-
-155-180s：安全边界  
-说明 Dashboard 不控制 Nav2、不做完整底盘闭环、不启动训练；上游不可用时显示 disconnected / stale / no data。
-
-## 7. 禁止在录屏中宣称
+## 8. 录屏中禁止宣称
 
 - 不宣称 Dashboard 直接控制 Nav2。
-- 不宣称 motor bench 是完整双轮底盘或真实小车。
+- 不宣称 motor bench 是完整双轮底盘或真实差速小车。
 - 不宣称已有真实 VLA / RL / world model 训练结果。
 - 不把 mock success rate 当作公开 benchmark。
 - 不宣称已实现完整商业 WMS、多机器人调度或完整 AI 训练平台。
+- 不把 Simulation Preview 说成真实相机流。
 
-录屏时不应该做的事情：
+## 9. 录屏后检查
 
-- 不临场刷板或改 PlatformIO 配置。
-- 不在未确认安全的情况下点击 motor `Apply`。
-- 不长时间运行 motor bench。
-- 不用 Dashboard 绕过 backend 直接连 MQTT / ROS 2 / 硬件。
-- 不展示未打码的隐私路径、token、Wi-Fi 密码或设备序列信息。
-- 不把 Offline / Mock / Reserved 状态隐藏起来。
-
-## 8. 录屏后检查
-
-- 视频中没有隐私路径或敏感凭据。
-- 每个 mock / baseline / reserved 项都被清楚标注。
-- motor bench 口径是 N20 单电机 bench。
-- Evaluation 是只读展示。
-- 网络失败时页面没有白屏。
-- 结尾能看懂三条链路：AMR task、IMU/Motor telemetry、Evaluation Summary。
+- 视频中没有隐私路径、token、Wi-Fi 密码或设备序列信息。
+- Mock / Offline / Reserved 标签没有被裁掉。
+- Evaluation 口径是 baseline / mock / reserved。
+- Motor 口径是 N20 single-motor closed-loop bench。
+- 页面没有白屏，网络失败时显示 disconnected / no data。
+- 观众能看懂三条链路：AMR task、IMU/Motor telemetry、System Evaluation & Validation layer。

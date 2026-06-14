@@ -433,7 +433,7 @@ mosquitto_sub -h 127.0.0.1 -p 1883 -t robot/motor/cmd -C 1 -W 20
 - `robot/imu` MQTT 有数据，Dashboard `/api/robot/status` 可读到 IMU。
 - `robot/state` MQTT 有数据，Dashboard `/api/robot/status` 可读到 robot state。
 - `robot/motor/status` MQTT 有数据，Dashboard `/api/robot/status` 可读到 motor status。
-- `POST /api/robot/motor/cmd` 发布保守命令：`target_speed_mps=0.03`，换算 `target_rpm=8.8147`，`max_pwm=0.12`。
+- `POST /api/robot/motor/cmd` 最终录屏推荐命令：`target_speed_mps=0.08`，换算 `target_rpm≈23.50`，低于 `80 rpm` bench limit；短时运行后 STOP。
 - `robot/motor/cmd` MQTT 收到 backend payload，ROS 2 `/motor/cmd` 收到桥接后的 String。
 - 更新后的 ESP32 bench 固件支持运行时 arm/disarm：`enabled=true` 且 `stop=false` 会把 `motor_state.hardware_outputs_enabled` 切到 `1`，`stop=true` 或 `enabled=false` 会切回 `0`。
 - 更新后的 ESP32 bench 固件已经把普通 `/motor/cmd` 路径接到真实 encoder feedback：`actual_rpm` / `measured_rpm` 来自单 N20 bench 编码器滤波值；当前 `20 rpm` 量级可接近目标，`40/60/80 rpm` 仍是保守 tune，可能有明显稳态误差。
@@ -519,7 +519,7 @@ mosquitto_sub -h 127.0.0.1 -p 1883 -t robot/motor/cmd -C 1 -W 20
 - 确认 `kEnableMotorHardwareOutputs=false`，除非明确进入人工 bench 硬件演示。
 - 命令只通过 `POST /api/robot/motor/cmd`。
 - 不直接发布 PWM。
-- 本轮保守命令建议：`target_speed_mps=0.03`、`max_pwm=0.12`、`timeout_ms=500`。
+- 本轮录屏命令建议：`target_speed_mps=0.08`、`timeout_ms=2500`，录到曲线后立即 STOP。
 - Stop 必须先验证可用：`stop=true`、`enabled=false`、`target_rpm=0`、`target_speed_mps=0`。
 - 录屏口径只写 Wheel Speed / 轮端等效速度。
 

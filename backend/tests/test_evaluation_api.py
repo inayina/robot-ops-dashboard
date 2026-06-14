@@ -47,6 +47,7 @@ def test_evaluation_summary_returns_core_fields():
         "model_version",
         "task_success_rate",
         "failure_count",
+        "failure_cases",
         "data_sources",
         "latest_status",
         "gpu_usage",
@@ -56,9 +57,15 @@ def test_evaluation_summary_returns_core_fields():
 
     assert body["run_id"] == "eval_run_20260613_baseline_nav2_001"
     assert body["model_version"] == "baseline_nav2_no_learning"
-    assert body["failure_count"] == 1
+    assert body["failure_count"] >= 1
+    assert isinstance(body["failure_cases"], list)
+    failure_case_ids = {case["failure_case_id"] for case in body["failure_cases"]}
+    assert "failure_mock_station_b_blocked_001" in failure_case_ids
     assert isinstance(body["data_sources"], list)
     assert body["quality_checks"]["no_real_training_claim"] is True
+    assert isinstance(body["live_run"], dict)
+    assert body["live_run"]["result_scope"] == "live_dashboard_snapshot_plus_baseline_contract_not_model_training"
+    assert body["live_run"]["quality_checks"]["live_task_count"] >= 0
     assert "reserved" in body["gpu_usage"]
 
 

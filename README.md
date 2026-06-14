@@ -10,7 +10,7 @@
 - 设备健康与通信状态监控
 - 测试验证过程留痕与结果汇总
 - 异常告警聚合与排障辅助
-- 机器人数据链路、`run_id`、`dataset_version`、`model_version`、失败样本与 compute 状态展示
+- 机器人系统验收记录、`run_id`、`dataset_version`、`baseline_version`、任务闭环指标、遥测状态与跨仓库证据展示
 - 后续 AI 分析结果与诊断建议展示接口预留
 
 ## Portfolio Demo / 作品集主入口
@@ -20,9 +20,9 @@
 1. **AMR / WMS 任务链路**：Dashboard frontend -> Dashboard backend -> AMR Mock WMS HTTP API -> Mock WMS executor -> Nav2 / Gazebo -> task status writeback。
 2. **IMU / robot state 状态链路**：STM32 + MPU6050 -> ESP32-S3 micro-ROS -> ROS 2 topics -> MQTT mirror -> Dashboard backend -> `/ws/status` -> IMU Status card。
 3. **Motor / Encoder bench 链路**：Dashboard explicit command -> `POST /api/robot/motor/cmd` -> MQTT `robot/motor/cmd` -> ESP32 motor bench -> encoder status -> MQTT `robot/motor/status` -> Dashboard。
-4. **Data & Evaluation 展示层**：mock evaluation files -> Dashboard backend `GET /api/evaluation/*` -> frontend cards，展示 `run_id`、`dataset_version`、`model_version`、任务成功率、失败样本与 GPU / compute 状态。
+4. **System Evaluation & Validation 展示层**：mock / baseline validation files -> Dashboard backend `GET /api/evaluation/*` -> frontend cards，展示 `run_id`、`dataset_version`、`baseline_version`、`control_policy`、任务成功率、Dashboard API、WebSocket、MQTT 遥测、Motor bench 状态与跨仓库证据。
 
-作品集提取摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。机器人数据链路与评测平台说明见 [docs/robot_data_evaluation_platform.md](./docs/robot_data_evaluation_platform.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
+作品集提取主入口见 [docs/portfolio_demo_summary.md](./docs/portfolio_demo_summary.md)，简短摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。机器人数据链路与评测平台说明见 [docs/robot_data_evaluation_platform.md](./docs/robot_data_evaluation_platform.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
 
 当前展示口径：
 
@@ -41,6 +41,8 @@
 更多演示截图：
 
 - [Task Dispatch 画面](./artifacts/screenshots/dashboard-task-dispatch-1440x900.png)
+- [Motor / Encoder bench 曲线](./artifacts/screenshots/dashboard-motor-curve-1440x900.png)
+- [System Evaluation & Validation Layer](./artifacts/screenshots/dashboard-evaluation-platform-1440x900.png)
 - [1366x768 录屏构图](./artifacts/screenshots/dashboard-recording-frame-1366x768.png)
 
 ## Related Repositories / 项目入口
@@ -253,11 +255,22 @@ flowchart TD
 - `/api/sim/stream` 只代理 AMR / Gazebo 侧已暴露的 HTTP MJPEG 字节流，不依赖 ROS 2、Gazebo、RViz、OpenCV 或系统桌面环境
 - `/api/wms/tasks` 是对上游 Mock WMS `/tasks` 的最小 HTTP proxy，支持任务查询与创建
 - `/api/robot/motor/cmd` 会把前端命令规范化后发布到 MQTT `robot/motor/cmd`，用于低频受限电机控制
-- `/api/evaluation/*` 是作品集 Data & Evaluation Layer 的只读接口，只读取 `mock/` 与 `backend/data/eval_runs/` 下的 baseline / mock / reserved 数据
-- `/api/evaluation/summary` 返回 `backend/data/eval_runs/sample_eval_run.json` 的轻量核心摘要
+- `/api/evaluation/*` 是作品集 System Evaluation & Validation Layer 的只读接口，只读取 `mock/` 与 `backend/data/eval_runs/` 下的 baseline / mock / reserved 数据
+- `/api/evaluation/summary` 返回 `backend/data/eval_runs/sample_eval_run.json` 的轻量核心摘要，并包含 `validation_metrics` 与 `evidence_links`
 - `/ws/status` 向前端推送任务、设备、IMU 和电机状态快照
 - 前端首屏实时监控区固定展示 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream`
-- 前端首屏下方的 `Evaluation & ML-ready Data Layer` 面向作品集截图组织为 Hero、纵向数据流程、三张摘要卡和 Current Scope 标注，展示 `run_id`、`dataset_version`、`model_version`、`policy_type`、任务成功率、质量检查和 ML-ready feature 字段；当 evaluation API 不可用时使用 `Offline / Mock` fallback，不白屏
+- 前端首屏下方的 `System Evaluation & Validation Layer` 面向作品集截图组织为 Hero、纵向验收流程、三张摘要卡和 Current Scope 标注，展示 `run_id`、`dataset_version`、`baseline_version`、`control_policy`、任务闭环指标、遥测 / motor bench 状态和证据链接；当 evaluation API 不可用时使用 `Offline / Mock` fallback，不白屏
+
+## How to read the evaluation layer
+
+这一层应按 **system validation layer** 理解，而不是 ML benchmark 或训练结果看板。它的作用是把本地演示与联调证据整理成面试官能快速扫描的验收摘要：
+
+- `System Validation Summary` 展示本次 baseline / mock 验收记录，包括 `run_id`、`dataset_version`、`baseline_version`、`control_policy` 和 `result_scope`。
+- `Task Execution Metrics` 展示 AMR Mock WMS 任务闭环的任务总数、成功数、失败数、成功率和失败样本计数。
+- `Telemetry & Motor Bench Metrics` 展示 Dashboard API、WebSocket、MQTT 遥测、电机 bench、安全边界和跨仓库证据状态。
+- `validation_metrics.no_real_training_claim=true` 是硬边界：当前不宣称已有真实 VLA / RL / world model 训练结果。
+- `evidence_links` 指向 AMR 验收清单、Mock WMS HTTP executor E2E 报告、Dashboard evaluation API 测试和 real hardware chain 检查脚本，用于说明证据来自哪些仓库与验证入口。
+- `mock_evaluation`、`baseline_system_evaluation`、`interface_reserved` 的边界继续保留；reserved 字段只表示接口预留，不填虚假的模型、GPU 或真实机器人结果。
 
 ## 第一阶段优先级
 
@@ -273,7 +286,7 @@ flowchart TD
 作品集素材统一放在 `artifacts/` 下：
 
 - [artifacts/screenshots](./artifacts/screenshots/)：Dashboard 总览、任务下发、IMU 状态、Motor / Encoder bench、断连状态截图。
-- 建议使用 `dashboard-evaluation-platform-1440x900.png` 展示完整 `Evaluation & ML-ready Data Layer`；后端未启动时可额外截取 `dashboard-disconnected-evaluation-1440x900.png`，保留右上角 `Offline / Mock` fallback 标注。
+- 建议使用 `dashboard-overview-1440x900.png` 作为 GitHub README 首图，使用 `dashboard-motor-curve-1440x900.png` 展示受限 motor bench 链路，使用 `dashboard-evaluation-platform-1440x900.png` 展示完整 `System Evaluation & Validation Layer`；后端未启动时可额外截取 `dashboard-disconnected-evaluation-1440x900.png`，保留右上角 `Offline / Mock` fallback 标注。
 - [artifacts/videos](./artifacts/videos/)：60-90 秒演示录屏和最终剪辑版本。
 - [artifacts/reports](./artifacts/reports/)：录屏前彩排、HTTP API 验证、MQTT topic 采样和测试报告。
 
@@ -873,7 +886,7 @@ robot-ops-dashboard/
 - `docs/` 用于沉淀设计、范围、接口契约与路线规划
 - `mock/` 用于提供前后续开发、联调、演示和只读 evaluation 展示的样例数据
 - `backend/` 当前提供最小 FastAPI 后端、AMR HTTP adapter、Mock WMS task proxy 与 MQTT 状态缓存
-- `frontend/` 当前用于本地静态监控页面、Mock WMS task 创建与 Data & Evaluation Layer 展示
+- `frontend/` 当前用于本地静态监控页面、Mock WMS task 创建与 System Evaluation & Validation Layer 展示
 
 ## 文档导航
 
@@ -897,4 +910,4 @@ robot-ops-dashboard/
 
 如果后续需要用于 GitHub 首页说明或简历描述，可以概括为：
 
-> 面向机器人数据链路、系统 baseline 评测与状态监控的轻量 Dashboard，围绕 `amr_warehouse_navigation` Mock WMS HTTP API、本地 MQTT 状态 topic 与 mock evaluation contract 建立统一展示入口，覆盖 AMR 任务链路、micro-ROS / MQTT 遥测、Motor bench 状态、run_id、dataset_version、model_version、失败样本和 compute 状态；当前不宣称真实 VLA / RL / world model 训练结果。
+> 面向机器人数据链路、系统 baseline 验收与状态监控的轻量 Dashboard，围绕 `amr_warehouse_navigation` Mock WMS HTTP API、本地 MQTT 状态 topic 与 mock / baseline validation contract 建立统一展示入口，覆盖 AMR 任务链路、Dashboard API、WebSocket、micro-ROS / MQTT 遥测、Motor bench 状态、run_id、dataset_version、baseline_version、失败样本和跨仓库证据；当前不宣称真实 VLA / RL / world model 训练结果。

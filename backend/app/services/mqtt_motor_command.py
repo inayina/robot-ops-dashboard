@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import shutil
+import subprocess
 from typing import Any
 from urllib.parse import urlparse
 
@@ -39,11 +41,49 @@ class RobotMqttMotorCommandService:
             )
 
         host, port = self._parse_broker_url(self.broker_url)
-        client = self._create_client()
         payload_json = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+        if shutil.which("mosquitto_pub"):
+            self._publish_with_mosquitto_pub(host, port, payload_json)
+        else:
+            self._publish_with_paho(host, port, payload_json)
+
+        return {
+            "topic": self.topic,
+            "published_at": utc_now_iso(),
+            "payload": payload,
+        }
+
+    def _publish_with_mosquitto_pub(self, host: str, port: int, payload_json: str) -> None:
+        command = [
+            "mosquitto_pub",
+            "-h",
+            host,
+            "-p",
+            str(port),
+            "-t",
+            self.topic,
+            "-m",
+            payload_json,
+        ]
+
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except Exception as exc:  # pragma: no cover - network/runtime dependent
+            raise MotorCommandPublishError(f"Failed to publish motor command with mosquitto_pub: {exc}") from exc
+
+    def _publish_with_paho(self, host: str, port: int, payload_json: str) -> None:
+        client = self._create_client()
 
         try:
             client.connect(host, port, keepalive=self.keepalive_seconds)
+            client.loop_start()
             result = client.publish(self.topic, payload_json, qos=0, retain=False)
             if hasattr(result, "wait_for_publish"):
                 result.wait_for_publish()
@@ -51,6 +91,10 @@ class RobotMqttMotorCommandService:
         except Exception as exc:  # pragma: no cover - network/runtime dependent
             raise MotorCommandPublishError(f"Failed to publish motor command: {exc}") from exc
         finally:
+            try:
+                client.loop_stop()
+            except Exception:
+                pass
             try:
                 client.disconnect()
             except Exception:
@@ -60,12 +104,6 @@ class RobotMqttMotorCommandService:
             raise MotorCommandPublishError(
                 f"Failed to publish motor command to {self.topic}: rc={status}"
             )
-
-        return {
-            "topic": self.topic,
-            "published_at": utc_now_iso(),
-            "payload": payload,
-        }
 
     @staticmethod
     def _parse_broker_url(broker_url: str) -> tuple[str, int]:

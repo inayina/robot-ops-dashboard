@@ -26,6 +26,7 @@ const DATA_FILES = {
   evaluationModels: `${API_BASE_URL}/api/evaluation/models`,
   evaluationFailureCases: `${API_BASE_URL}/api/evaluation/failure-cases`,
   evaluationCompute: `${API_BASE_URL}/api/evaluation/compute`,
+  evaluationSummary: `${API_BASE_URL}/api/evaluation/summary`,
 };
 
 const EVALUATION_FALLBACK_PAYLOADS = {
@@ -297,6 +298,10 @@ const rootNodes = {
   simPreviewConnection: document.querySelector("#simPreviewConnection"),
   simPreviewLastUpdate: document.querySelector("#simPreviewLastUpdate"),
   simPreviewLabel: document.querySelector("#simPreviewLabel"),
+  simRoutePath: document.querySelector("#simRoutePath"),
+  simRouteRobot: document.querySelector("#simRouteRobot"),
+  simRouteLabel: document.querySelector("#simRouteLabel"),
+  simRouteProgress: document.querySelector("#simRouteProgress"),
   evaluationMeta: document.querySelector("#evaluationMeta"),
   evalRunType: document.querySelector("#evalRunType"),
   evalRunId: document.querySelector("#evalRunId"),
@@ -323,6 +328,13 @@ const rootNodes = {
   evalSourceCheck: document.querySelector("#evalSourceCheck"),
   evalMqttDelay: document.querySelector("#evalMqttDelay"),
   evalStatusTimeout: document.querySelector("#evalStatusTimeout"),
+  evalAmrE2eStatus: document.querySelector("#evalAmrE2eStatus"),
+  evalDashboardApiStatus: document.querySelector("#evalDashboardApiStatus"),
+  evalWebsocketStatus: document.querySelector("#evalWebsocketStatus"),
+  evalMqttTelemetryStatus: document.querySelector("#evalMqttTelemetryStatus"),
+  evalMotorBenchStatus: document.querySelector("#evalMotorBenchStatus"),
+  evalNoTrainingClaim: document.querySelector("#evalNoTrainingClaim"),
+  evalEvidenceLinks: document.querySelector("#evalEvidenceLinks"),
   evalTaskResult: document.querySelector("#evalTaskResult"),
   evalRecoveryCount: document.querySelector("#evalRecoveryCount"),
   evalImuRms: document.querySelector("#evalImuRms"),
@@ -349,6 +361,7 @@ const cachedPayloads = {
   evaluationModels: null,
   evaluationFailureCases: null,
   evaluationCompute: null,
+  evaluationSummary: null,
 };
 
 let refreshInFlight = false;
@@ -412,6 +425,7 @@ async function init() {
       evaluationModelsResult,
       evaluationFailureCasesResult,
       evaluationComputeResult,
+      evaluationSummaryResult,
     ] = await Promise.allSettled([
       fetchJson(DATA_FILES.tasks),
       fetchJson(DATA_FILES.devices),
@@ -422,6 +436,7 @@ async function init() {
       fetchJson(DATA_FILES.evaluationModels),
       fetchJson(DATA_FILES.evaluationFailureCases),
       fetchJson(DATA_FILES.evaluationCompute),
+      fetchJson(DATA_FILES.evaluationSummary),
     ]);
 
     const failures = [
@@ -433,6 +448,7 @@ async function init() {
       syncSection("evaluationModels", evaluationModelsResult, renderEvaluationModels, rootNodes.evaluationMeta, "模型版本"),
       syncSection("evaluationFailureCases", evaluationFailureCasesResult, renderEvaluationFailureCases, rootNodes.evalFailureMeta, "失败样本"),
       syncSection("evaluationCompute", evaluationComputeResult, renderEvaluationCompute, rootNodes.evalComputeMeta, "算力状态"),
+      syncSection("evaluationSummary", evaluationSummaryResult, renderEvaluationSummary, rootNodes.evaluationMeta, "实时评测摘要"),
     ].filter(Boolean);
 
     syncRobotStatus(robotStatusResult);
@@ -630,6 +646,7 @@ function refreshMotorDisplay() {
     return;
   }
 
+  recordMotorHistorySample(latestMotorSnapshot, { repeatStale: true });
   renderMotorStatus(latestMotorSnapshot, latestMotorRenderOptions);
 }
 
@@ -1409,24 +1426,27 @@ function recordImuHistorySample(snapshot) {
   }
 }
 
-function recordMotorHistorySample(snapshot) {
+function recordMotorHistorySample(snapshot, options = {}) {
   const payload = snapshot?.payload;
   if (!isObjectRecord(payload)) {
     return;
   }
 
   const motorState = extractMotorStatePayload(payload);
-  const timestamp =
+  const sourceTimestamp =
     snapshot?.last_seen ||
     payload.last_update_time ||
     pickTimestampFromPayload(payload) ||
     snapshot?.generated_at;
-  if (!timestamp) {
+  if (!sourceTimestamp && !options.repeatStale) {
     return;
   }
 
+  const now = Date.now();
+  const timestamp = options.repeatStale ? new Date(now).toISOString() : sourceTimestamp;
+  const sampleKey = options.repeatStale ? `${sourceTimestamp || "motor"}:${Math.floor(now / 1000)}` : sourceTimestamp;
   const latest = motorHistory[motorHistory.length - 1];
-  if (latest?.key === timestamp) {
+  if (latest?.key === sampleKey) {
     return;
   }
 
@@ -1457,8 +1477,9 @@ function recordMotorHistorySample(snapshot) {
   }
 
   motorHistory.push({
-    key: timestamp,
+    key: sampleKey,
     timestamp,
+    sourceTimestamp,
     targetRpm,
     actualRpm,
     errorRpm,
@@ -1474,11 +1495,44 @@ function recordMotorHistorySample(snapshot) {
     fault:
       pickFirstValue(payload, ["fault", "fault_active", "faultActive"]) ??
       pickFirstValue(motorState, ["fault", "fault_active", "faultActive"]),
+    sampleType: options.repeatStale ? "held-status" : "status",
   });
 
   if (motorHistory.length > MOTOR_HISTORY_LIMIT) {
     motorHistory.shift();
   }
+}
+
+function recordMotorCommandHistorySample(commandPayload, timestamp = new Date().toISOString()) {
+  if (!isObjectRecord(commandPayload)) {
+    return;
+  }
+
+  const targetRpm = toFiniteNumber(commandPayload.target_rpm);
+  const latestActual = motorHistory[motorHistory.length - 1]?.actualRpm;
+  motorHistory.push({
+    key: `command:${commandPayload.command_id || timestamp}`,
+    timestamp,
+    sourceTimestamp: timestamp,
+    targetRpm,
+    actualRpm: toFiniteNumber(latestActual),
+    errorRpm: targetRpm !== undefined && latestActual !== undefined ? targetRpm - latestActual : undefined,
+    pwm: commandPayload.stop ? 0 : undefined,
+    maxPwm: toFiniteNumber(commandPayload.max_pwm),
+    status: commandPayload.stop ? "stop-command" : "command",
+    enabled: commandPayload.enabled,
+    closedLoop: commandPayload.closed_loop,
+    fault: false,
+    sampleType: "command",
+  });
+
+  if (motorHistory.length > MOTOR_HISTORY_LIMIT) {
+    motorHistory.splice(0, motorHistory.length - MOTOR_HISTORY_LIMIT);
+  }
+
+  window.requestAnimationFrame(() => {
+    renderMotorTrendCanvas();
+  });
 }
 
 function buildImuInfoTile(label, value) {
@@ -1859,6 +1913,7 @@ async function handleMotorCommandSubmit(event) {
   try {
     const response = await postJson(DATA_FILES.motorCommand, payload);
     const publishedPayload = response?.payload || payload;
+    recordMotorCommandHistorySample(publishedPayload, response?.published_at || new Date().toISOString());
     renderMotorCommandMessage(
       `Motor cmd published: ${formatSpeedMps(publishedPayload.target_speed_mps)} -> ${formatRpm(publishedPayload.target_rpm)}, timeout ${publishedPayload.timeout_ms} ms`
     );
@@ -1891,6 +1946,7 @@ async function handleMotorStopClick() {
 
   try {
     const response = await postJson(DATA_FILES.motorCommand, payload);
+    recordMotorCommandHistorySample(response?.payload || payload, response?.published_at || new Date().toISOString());
     if (rootNodes.motorEnableSwitch) {
       rootNodes.motorEnableSwitch.checked = false;
     }
@@ -2371,7 +2427,7 @@ function renderSummary(tasksPayload, devicesPayload, alertsPayload, failures = [
   const criticalDevices = devices.filter((device) => device.health_status === "critical").length;
   const openAlerts = alerts.filter((alert) => alert.status === "open").length;
   const criticalAlerts = alerts.filter((alert) => alert.level === "critical" && alert.status === "open").length;
-  const currentTask = tasks.find((task) => ["dispatching", "running", "blocked"].includes(task.status)) || tasks[0] || null;
+  const currentTask = selectCurrentTask(tasks);
 
   ensureSummaryCards();
   updateSummaryCard(
@@ -2468,7 +2524,7 @@ function renderTasks(tasksPayload, options = {}) {
   );
   const blockedTasks = tasks.filter((task) => task.status === "blocked");
   const completedTasks = tasks.filter((task) => task.status === "completed");
-  const currentTask = activeTasks[0] || tasks[0] || null;
+  const currentTask = selectCurrentTask(tasks);
   const progress = clampPercent(toFiniteNumber(currentTask?.progress) || 0);
   const taskStatus = currentTask ? taskStatusLabel[currentTask.status] || currentTask.status || "-" : "-";
   const taskStage = currentTask ? currentTask.stage || currentTask.phase || currentTask.task_type || "-" : "-";
@@ -2500,8 +2556,115 @@ function renderTasks(tasksPayload, options = {}) {
   setText(rootNodes.taskProgressValue, currentTask ? `${Math.round(progress)}%` : "--%");
   setWidthPercent(rootNodes.taskProgressFill, progress);
   appendCurrentTaskEvent(currentTask, progress, options);
+  renderSimRoutePreview(currentTask, progress);
 
   refreshRobotInfo();
+}
+
+function selectCurrentTask(tasks) {
+  if (!Array.isArray(tasks) || !tasks.length) {
+    return null;
+  }
+
+  return [...tasks].sort((a, b) => {
+    const activeDelta = taskActiveRank(b) - taskActiveRank(a);
+    if (activeDelta !== 0) {
+      return activeDelta;
+    }
+    return getTaskTimeMs(b) - getTaskTimeMs(a);
+  })[0];
+}
+
+function taskActiveRank(task) {
+  const status = String(task?.status || task?.source_status || "").toLowerCase();
+  if (status === "running") {
+    return 4;
+  }
+  if (status === "dispatching") {
+    return 3;
+  }
+  if (status === "queued" || status === "pending") {
+    return 2;
+  }
+  if (status === "blocked") {
+    return 1;
+  }
+  return 0;
+}
+
+function getTaskTimeMs(task) {
+  const timestamp =
+    task?.updated_at ||
+    task?.last_update_at ||
+    task?.assigned_at ||
+    task?.started_at ||
+    task?.created_at ||
+    task?.completed_at;
+  return parseDateTime(timestamp)?.getTime() || 0;
+}
+
+function renderSimRoutePreview(task, progress = 0) {
+  if (!rootNodes.simRoutePath || !rootNodes.simRouteRobot) {
+    return;
+  }
+
+  const pickup = normalizeTaskPoint(task?.pickup_station || task?.pickup || "start_zone");
+  const dropoff = normalizeTaskPoint(task?.dropoff_station || task?.dropoff || task?.target_name || "station_a");
+  const start = SIM_ROUTE_POINTS[pickup] || SIM_ROUTE_POINTS.start_zone;
+  const end = SIM_ROUTE_POINTS[dropoff] || SIM_ROUTE_POINTS.station_a;
+  const routeProgress = clampPercent(progress);
+  const controlA = {
+    x: start.x + (end.x - start.x) * 0.35,
+    y: start.y - 18,
+  };
+  const controlB = {
+    x: start.x + (end.x - start.x) * 0.65,
+    y: end.y + 18,
+  };
+  const robotPoint = cubicBezierPoint(start, controlA, controlB, end, routeProgress / 100);
+
+  rootNodes.simRoutePath.setAttribute(
+    "d",
+    `M${start.x} ${start.y} C${controlA.x} ${controlA.y} ${controlB.x} ${controlB.y} ${end.x} ${end.y}`
+  );
+  rootNodes.simRouteRobot.setAttribute("cx", String(robotPoint.x));
+  rootNodes.simRouteRobot.setAttribute("cy", String(robotPoint.y));
+  setText(rootNodes.simRouteLabel, task ? `${pickup} -> ${dropoff}` : "Offline / Mock Route");
+  setText(
+    rootNodes.simRouteProgress,
+    task
+      ? `${taskStatusLabel[task.status] || task.status || "task"} · ${Math.round(routeProgress)}% · WMS route overlay`
+      : "Gazebo / RViz stream not connected; showing WMS route overlay"
+  );
+}
+
+const SIM_ROUTE_POINTS = {
+  start_zone: { x: 18, y: 78 },
+  station_a: { x: 82, y: 24 },
+  station_b: { x: 82, y: 78 },
+  dock_a: { x: 18, y: 24 },
+};
+
+function normalizeTaskPoint(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(SIM_ROUTE_POINTS, normalized)) {
+    return normalized;
+  }
+  return normalized.includes("station_b")
+    ? "station_b"
+    : normalized.includes("dock")
+    ? "dock_a"
+    : normalized.includes("start")
+    ? "start_zone"
+    : "station_a";
+}
+
+function cubicBezierPoint(start, controlA, controlB, end, t) {
+  const u = 1 - t;
+  return {
+    x: u ** 3 * start.x + 3 * u ** 2 * t * controlA.x + 3 * u * t ** 2 * controlB.x + t ** 3 * end.x,
+    y: u ** 3 * start.y + 3 * u ** 2 * t * controlA.y + 3 * u * t ** 2 * controlB.y + t ** 3 * end.y,
+  };
 }
 
 function appendCurrentTaskEvent(currentTask, progress, options = {}) {
@@ -2616,14 +2779,23 @@ function renderEvaluationCompute(_payload, _options = {}) {
   renderEvaluationLayer();
 }
 
+function renderEvaluationSummary(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
 function renderEvaluationLayer() {
   const runs = getCachedDataList("evaluationRuns");
   const datasets = getCachedDataList("evaluationDatasets");
   const models = getCachedDataList("evaluationModels");
   const failures = getCachedDataList("evaluationFailureCases");
   const compute = getCachedDataList("evaluationCompute");
+  const summary = cachedPayloads.evaluationSummary || null;
+  const liveRun = buildRunFromEvaluationSummary(summary);
+  const summaryFailures = Array.isArray(summary?.failure_cases) ? summary.failure_cases : [];
+  const mergedFailures = liveRun && summaryFailures.length ? summaryFailures : mergeEvaluationFailures(summaryFailures, failures);
   const usingOfflineMock = isEvaluationOfflineMock();
   const currentRun =
+    liveRun ||
     runs.find((run) => run.run_type === "baseline_system_evaluation") ||
     runs.find((run) => run.run_type === "mock_evaluation") ||
     runs[0] ||
@@ -2641,6 +2813,8 @@ function renderEvaluationLayer() {
   if (rootNodes.evaluationMeta) {
     rootNodes.evaluationMeta.textContent = usingOfflineMock
       ? "Offline / Mock · fallback data · read-only"
+      : liveRun
+      ? `live snapshot · ${currentRun.task_total ?? 0} tasks · IMU ${summary?.live_run?.quality_checks?.live_imu_payload ? "live" : "waiting"} · Motor ${summary?.live_run?.quality_checks?.live_motor_status_payload ? "live" : "waiting"}`
       : missingSections.length
       ? `degraded · missing ${missingSections.map(([label]) => label).join(", ")}`
       : `${runs.length} runs · ${datasets.length} datasets · ${models.length} models · read-only`;
@@ -2649,8 +2823,54 @@ function renderEvaluationLayer() {
 
   renderEvaluationContext(currentRun, currentDataset, currentModel);
   renderEvaluationBaseline(currentRun, currentModel);
-  renderEvaluationQuality(currentRun, currentDataset, failures, compute, usingOfflineMock);
-  renderEvaluationFeatures(currentRun, currentDataset, currentModel, failures);
+  renderEvaluationQuality(currentRun, currentDataset, mergedFailures, compute, usingOfflineMock);
+  renderEvaluationFeatures(currentRun, currentDataset, currentModel, mergedFailures, summary);
+  renderSystemValidationMetrics(summary, currentRun, usingOfflineMock);
+  renderEvaluationComputeStatus(compute);
+}
+
+function buildRunFromEvaluationSummary(summary) {
+  const liveRun = summary?.live_run;
+  if (!isObjectRecord(liveRun)) {
+    return null;
+  }
+
+  return {
+    run_id: liveRun.run_id || summary.run_id,
+    run_type: liveRun.run_type || summary.run_type || "baseline_system_evaluation",
+    scenario: liveRun.scenario || summary.scenario?.description || summary.scenario?.name || "Live dashboard snapshot",
+    robot_id: liveRun.robot_id,
+    task_source: liveRun.task_source,
+    dataset_version: liveRun.dataset_version || summary.dataset_version,
+    model_version: liveRun.model_version || summary.model_version,
+    baseline_version: liveRun.baseline_version || summary.baseline_version || liveRun.model_version || summary.model_version,
+    control_policy: liveRun.control_policy || summary.control_policy || summary.policy_type,
+    status: liveRun.status || summary.status || summary.latest_status,
+    task_total: liveRun.task_total ?? summary.task_total,
+    task_success: liveRun.task_success ?? summary.task_success,
+    task_failed: liveRun.task_failed ?? summary.task_failed,
+    task_success_rate: liveRun.task_success_rate ?? summary.task_success_rate,
+    started_at: liveRun.started_at,
+    finished_at: liveRun.finished_at,
+    latest_task_id: liveRun.latest_task_id,
+    latest_task_route: liveRun.latest_task_route,
+    latest_task_status: liveRun.latest_task_status,
+    result_scope: liveRun.result_scope || "live_dashboard_snapshot_not_model_training",
+    feature_snapshot: liveRun.feature_snapshot || {},
+    quality_checks: liveRun.quality_checks || {},
+  };
+}
+
+function mergeEvaluationFailures(primary, fallback) {
+  const seen = new Set();
+  return [...primary, ...fallback].filter((item) => {
+    const key = item?.failure_case_id || `${item?.failure_type}-${item?.summary}`;
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function renderEvaluationContext(run, dataset, model) {
@@ -2661,8 +2881,8 @@ function renderEvaluationContext(run, dataset, model) {
   setHealthNode(rootNodes.evalRunType, evaluationRunTypeLabel(runType), runState);
   setHealthNode(rootNodes.evalRunStatus, run?.status || "waiting", statusToDataState(run?.status || "unknown"));
   setText(rootNodes.evalDatasetVersion, run?.dataset_version || dataset?.dataset_version || "-");
-  setText(rootNodes.evalModelVersion, run?.model_version || model?.model_version || "-");
-  setText(rootNodes.evalPolicyType, model?.model_type || runType || "-");
+  setText(rootNodes.evalModelVersion, run?.baseline_version || run?.model_version || model?.model_version || "-");
+  setText(rootNodes.evalPolicyType, run?.control_policy || model?.model_type || runType || "-");
   setText(rootNodes.evalResultScope, run?.result_scope || "-");
   setText(rootNodes.evalScenario, run?.scenario || "-");
 }
@@ -2692,7 +2912,15 @@ function renderEvaluationQuality(run, dataset, failures, compute, usingOfflineMo
   const openCases = failures.filter((item) => item.status === "open").length;
   const hasTelemetryStale = failures.some((item) => item.failure_type === "telemetry_stale");
   const hasTimeout = failures.some((item) => String(item.failure_type || "").includes("timeout"));
-  const sourceLabel = usingOfflineMock ? "mock" : dataset?.is_mock ? "mock" : dataset?.source_chain ? "pass" : "pending";
+  const sourceLabel = run?.result_scope === "live_dashboard_snapshot_plus_baseline_contract_not_model_training"
+    ? "live"
+    : usingOfflineMock
+    ? "mock"
+    : dataset?.is_mock
+    ? "mock"
+    : dataset?.source_chain
+    ? "pass"
+    : "pending";
   const cpu = compute.find((item) => item.resource_type === "cpu") || null;
 
   if (rootNodes.evalFailureMeta) {
@@ -2710,22 +2938,61 @@ function renderEvaluationQuality(run, dataset, failures, compute, usingOfflineMo
   setText(rootNodes.evalStatusTimeout, hasTimeout ? "1 case" : "none");
 }
 
-function renderEvaluationFeatures(run, dataset, model, failures) {
+function renderEvaluationFeatures(run, dataset, model, failures, summary = null) {
   const failedCount = toFiniteNumber(run?.task_failed) || 0;
   const recoveryCount = failures.filter((item) => item.status === "reviewed").length;
+  const featureSnapshot = run?.feature_snapshot || summary?.live_run?.feature_snapshot || {};
+  const qualityChecks = run?.quality_checks || summary?.live_run?.quality_checks || {};
   const featureLabel =
-    run?.run_type === "baseline_system_evaluation"
+    run?.result_scope === "live_dashboard_snapshot_plus_baseline_contract_not_model_training"
+      ? "live_snapshot"
+      : run?.run_type === "baseline_system_evaluation"
       ? "baseline_eval"
       : run?.run_type === "mock_evaluation"
       ? "mock_eval"
       : "reserved";
 
-  setText(rootNodes.evalTaskResult, failedCount > 0 ? "mixed" : run ? "success" : "-");
+  setText(rootNodes.evalTaskResult, run?.latest_task_status || (failedCount > 0 ? "mixed" : run ? "success" : "-"));
   setText(rootNodes.evalRecoveryCount, String(recoveryCount));
-  setText(rootNodes.evalImuRms, dataset?.source_chain ? "mapped" : "mock");
-  setText(rootNodes.evalMotorError, failures.some((item) => item.failure_type === "telemetry_stale") ? "stale" : "mapped");
-  setText(rootNodes.evalPwmOutput, model?.model_type === "system_baseline" ? "bench_ref" : "mapped");
+  setText(rootNodes.evalImuRms, qualityChecks.live_imu_payload ? "live" : dataset?.source_chain ? "mapped" : "mock");
+  setText(
+    rootNodes.evalMotorError,
+    featureSnapshot.motor_error_rpm !== undefined && featureSnapshot.motor_error_rpm !== null
+      ? formatMotorNumber(featureSnapshot.motor_error_rpm)
+      : failures.some((item) => item.failure_type === "telemetry_stale")
+      ? "stale"
+      : "mapped"
+  );
+  setText(
+    rootNodes.evalPwmOutput,
+    featureSnapshot.motor_pwm !== undefined && featureSnapshot.motor_pwm !== null
+      ? formatMotorNumber(featureSnapshot.motor_pwm)
+      : model?.model_type === "system_baseline"
+      ? "bench_ref"
+      : "mapped"
+  );
   setText(rootNodes.evalFeatureLabel, featureLabel);
+}
+
+function renderSystemValidationMetrics(summary, run, usingOfflineMock) {
+  const metrics = isObjectRecord(summary?.validation_metrics) ? summary.validation_metrics : {};
+  const evidenceLinks = Array.isArray(summary?.evidence_links) ? summary.evidence_links : [];
+  const qualityChecks = run?.quality_checks || summary?.live_run?.quality_checks || {};
+  const noTrainingClaim = metrics.no_real_training_claim === true || summary?.no_real_training_claim === true || usingOfflineMock;
+
+  setText(
+    rootNodes.evalAmrE2eStatus,
+    metrics.amr_e2e_status || (run?.task_total !== undefined ? "live_snapshot" : usingOfflineMock ? "mock" : "-")
+  );
+  setText(rootNodes.evalDashboardApiStatus, metrics.dashboard_api_status || (summary ? "pass" : usingOfflineMock ? "mock" : "-"));
+  setText(rootNodes.evalWebsocketStatus, metrics.websocket_status || (summary ? "status_stream_ready" : usingOfflineMock ? "mock" : "-"));
+  setText(
+    rootNodes.evalMqttTelemetryStatus,
+    metrics.mqtt_telemetry_status || qualityChecks.live_mqtt_connection || (usingOfflineMock ? "mock" : "-")
+  );
+  setText(rootNodes.evalMotorBenchStatus, metrics.motor_bench_status || (qualityChecks.live_motor_status_payload ? "live" : "explicit_bench_only"));
+  setText(rootNodes.evalNoTrainingClaim, noTrainingClaim ? "true" : "reserved");
+  setText(rootNodes.evalEvidenceLinks, evidenceLinks.length ? `${evidenceLinks.length} refs` : usingOfflineMock ? "mock refs" : "-");
 }
 
 function renderEvaluationRegistry(datasets, models) {
@@ -3119,7 +3386,7 @@ function refreshMotorControlAvailability() {
 function refreshRobotInfo() {
   const tasks = Array.isArray(cachedPayloads.tasks?.data) ? cachedPayloads.tasks.data : [];
   const devices = Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : [];
-  const currentTask = tasks.find((task) => ["queued", "dispatching", "running", "blocked"].includes(task.status)) || tasks[0] || null;
+  const currentTask = selectCurrentTask(tasks);
   const robotStatePayload =
     cachedPayloads.robotStatus?.robot?.state ||
     cachedPayloads.robotStatus?.topics?.["robot/state"]?.payload ||

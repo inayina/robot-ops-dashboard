@@ -13,7 +13,7 @@
 
 ## 2. 当前实现
 
-当前前端页面为 `Evaluation & ML-ready Data Layer`，结构为：
+当前前端页面为 `System Evaluation & Validation Layer`，结构为：
 
 1. Hero 区：标题、副标题和中文说明，强调 `run_id / dataset_version / model_version` 结构。
 2. 纵向流程图：`ROS2/Nav2 Task + IMU/Motor/MQTT + Dashboard Status` -> `Evaluation Run Record` -> `ML-ready Feature Export` -> `Evaluation Summary / Future ML`。

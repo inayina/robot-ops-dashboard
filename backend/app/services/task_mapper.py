@@ -52,6 +52,31 @@ def normalize_progress(value: Any, fallback_status: str) -> int:
     return round(max(0, min(100, progress)))
 
 
+TASK_POINTS = ("station_a", "station_b", "dock_a", "start_zone")
+
+
+def parse_dashboard_task_name(task_name: Any) -> dict[str, str]:
+    if not isinstance(task_name, str) or not task_name.startswith("dashboard_"):
+        return {}
+
+    body = task_name[len("dashboard_") :]
+    for pickup in TASK_POINTS:
+        marker = f"_{pickup}_to_"
+        marker_index = body.find(marker)
+        if marker_index == -1:
+            continue
+
+        rest = body[marker_index + len(marker) :]
+        dropoff = next((point for point in TASK_POINTS if rest == point or rest.startswith(f"{point}_")), "")
+        return {
+            "task_type": body[:marker_index],
+            "pickup_station": pickup,
+            "dropoff_station": dropoff,
+        }
+
+    return {}
+
+
 def map_amr_task_to_dashboard_task(raw_task: dict[str, Any]) -> dict[str, Any]:
     """Map a raw AMR task (unknown shape) into the Dashboard Task contract.
 
@@ -66,22 +91,29 @@ def map_amr_task_to_dashboard_task(raw_task: dict[str, Any]) -> dict[str, Any]:
 
     source_status = _first("source_status", "status", "state")
     dashboard_status = map_amr_status_to_dashboard_status(source_status)
+    task_name = _first("task_id", "task_name", "id", "wms_task_id")
+    task_name_meta = parse_dashboard_task_name(task_name)
     progress = normalize_progress(
         _first("progress", "percent"),
         fallback_status=dashboard_status,
     )
 
     mapped = {
-        "task_id": _first("task_id", "task_name", "id", "wms_task_id"),
+        "task_id": task_name,
         "order_id": _first("order_id", "order", "business_id"),
         "robot_id": _first("robot_id", "assigned_robot", "robot"),
-        "task_type": _first("task_type", "type", "job_type"),
+        "task_type": _first("task_type", "type", "job_type", default=task_name_meta.get("task_type")),
         "priority": _first("priority", "urgency"),
         "status": dashboard_status,
         "source_status": source_status,
         "progress": progress,
-        "pickup_station": _first("pickup_station", "from", "source_location"),
-        "dropoff_station": _first("dropoff_station", "to", "target_location", "target_name"),
+        "pickup_station": _first(
+            "pickup_station",
+            "from",
+            "source_location",
+            default=task_name_meta.get("pickup_station") or "start_zone",
+        ),
+        "dropoff_station": _first("dropoff_station", "to", "target_location", "target_name", default=task_name_meta.get("dropoff_station")),
         "created_at": _first("created_at", "created", "created_time"),
         "assigned_at": _first("assigned_at", "assigned", "assigned_time"),
         "started_at": _first("started_at", "started", "start_time"),

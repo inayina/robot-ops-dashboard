@@ -4,6 +4,8 @@
   "dataset_version": "robot_ops_dataset_mock_wms_mqtt_v0.1",
   "model_version": "baseline_nav2_no_learning",
   "policy_type": "rule_based_nav2_baseline",
+  "baseline_version": "baseline_nav2_no_learning",
+  "control_policy": "rule_based_nav2_baseline",
   "robot_platform": {
     "simulation": "ROS 2 Jazzy + Gazebo + Nav2 AMR",
     "hardware_status_chain": "STM32 / ESP32-S3 / micro-ROS / MQTT",
@@ -87,6 +89,38 @@
     "mock_or_baseline_labeled": true,
     "no_real_training_claim": true
   },
+  "validation_metrics": {
+    "amr_e2e_status": "baseline_pass_with_mock_failure_case",
+    "dashboard_api_status": "pass",
+    "websocket_status": "pass",
+    "mqtt_telemetry_status": "mock_or_live_mirror_ready",
+    "motor_bench_status": "explicit_low_frequency_bench_only",
+    "safety_boundary_status": "pass_monitoring_first_explicit_interactions",
+    "cross_repo_evidence_status": "documented",
+    "no_real_training_claim": true
+  },
+  "evidence_links": [
+    {
+      "label": "AMR acceptance checklist",
+      "path": "amr_warehouse_navigation/docs/acceptance_checklist.md",
+      "scope": "AMR task lifecycle and acceptance boundary"
+    },
+    {
+      "label": "Mock WMS HTTP executor E2E validation",
+      "path": "amr_warehouse_navigation/docs/wms/reports/mock_wms_http_executor_end_to_end_validation_2026_05_14.md",
+      "scope": "Mock WMS HTTP executor evidence"
+    },
+    {
+      "label": "Dashboard evaluation API tests",
+      "path": "robot-ops-dashboard/backend/tests/test_evaluation_api.py",
+      "scope": "Dashboard API contract verification"
+    },
+    {
+      "label": "Real hardware chain check script",
+      "path": "ros2-robot-digital-twin/scripts/check_real_hw_chain.sh",
+      "scope": "micro-ROS / MQTT / hardware chain evidence"
+    }
+  ],
   "log_paths": {
     "dashboard_backend": "artifacts/reports/dashboard_backend_eval_reserved.log",
     "amr_mock_wms": "artifacts/reports/amr_mock_wms_eval_reserved.log",
@@ -104,6 +138,7 @@
     "This run is a lightweight baseline/mock evaluation for portfolio presentation.",
     "model_version=baseline_nav2_no_learning is not a learned model.",
     "policy_type=rule_based_nav2_baseline is not VLA, RL, or world-model training.",
+    "baseline_version/control_policy are shown as system validation labels, not training artifacts.",
     "GPU usage is N/A/reserved; no real training result is claimed."
   ]
 }

@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import json
 import math
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -393,17 +394,48 @@ def build_evaluation_summary() -> dict[str, Any]:
     failure_cases = payload.get("failure_cases")
     failure_count = len(failure_cases) if isinstance(failure_cases, list) else 0
     latest_status = payload.get("latest_status") or derive_latest_evaluation_status(task_results)
+    live_run = build_live_evaluation_run()
+    live_failure_cases = live_run.get("failure_cases", [])
+    summary_failure_cases = failure_cases if isinstance(failure_cases, list) else []
+    validation_metrics = payload.get("validation_metrics", {})
+    if not isinstance(validation_metrics, dict):
+        validation_metrics = {}
+    evidence_links = payload.get("evidence_links", [])
+    if not isinstance(evidence_links, list):
+        evidence_links = []
 
     return {
         "run_id": payload.get("run_id"),
+        "run_type": "baseline_system_evaluation",
+        "status": live_run.get("status") or latest_status,
         "dataset_version": payload.get("dataset_version"),
         "model_version": payload.get("model_version"),
+        "policy_type": payload.get("policy_type"),
+        "baseline_version": payload.get("baseline_version") or payload.get("model_version"),
+        "control_policy": payload.get("control_policy") or payload.get("policy_type"),
+        "scenario": payload.get("scenario"),
         "task_success_rate": payload.get("task_success_rate"),
-        "failure_count": failure_count,
+        "task_total": live_run.get("task_total"),
+        "task_success": live_run.get("task_success"),
+        "task_failed": live_run.get("task_failed"),
+        "failure_count": failure_count + len(live_failure_cases),
+        "failure_cases": [*live_failure_cases, *summary_failure_cases],
         "data_sources": payload.get("data_sources", []),
         "latest_status": latest_status,
+        "live_run": live_run,
         "gpu_usage": payload.get("gpu_usage"),
-        "quality_checks": payload.get("quality_checks", {}),
+        "validation_metrics": validation_metrics,
+        "evidence_links": evidence_links,
+        "amr_e2e_status": validation_metrics.get("amr_e2e_status"),
+        "dashboard_api_status": validation_metrics.get("dashboard_api_status"),
+        "websocket_status": validation_metrics.get("websocket_status"),
+        "mqtt_telemetry_status": validation_metrics.get("mqtt_telemetry_status"),
+        "motor_bench_status": validation_metrics.get("motor_bench_status"),
+        "no_real_training_claim": validation_metrics.get("no_real_training_claim") is True,
+        "quality_checks": {
+            **(payload.get("quality_checks", {}) if isinstance(payload.get("quality_checks"), dict) else {}),
+            **live_run.get("quality_checks", {}),
+        },
     }
 
 
@@ -416,6 +448,200 @@ def derive_latest_evaluation_status(task_results: Any) -> str:
         return "unknown"
 
     return str(latest_task.get("status") or latest_task.get("result") or "unknown")
+
+
+def build_live_evaluation_run() -> dict[str, Any]:
+    now = utc_now_iso()
+    try:
+        tasks_envelope = load_tasks_envelope()
+        tasks = tasks_envelope.data
+        task_source = tasks_envelope.source
+        task_error = None
+    except Exception as exc:
+        tasks = []
+        task_source = config.ROBOT_OPS_TASK_SOURCE
+        task_error = extract_status_error_detail(exc)
+
+    mqtt_status = build_robot_status_response().model_dump()
+    telemetry = mqtt_status.get("robot", {})
+    latest_task = select_latest_task(tasks)
+    task_counts = count_live_task_statuses(tasks)
+    terminal_total = task_counts["completed"] + task_counts["failed"] + task_counts["cancelled"] + task_counts["blocked"]
+    success_denominator = terminal_total or len(tasks)
+    task_success_rate = task_counts["completed"] / success_denominator if success_denominator else None
+    latest_status = str(latest_task.get("status") or latest_task.get("source_status") or "no_task") if latest_task else "no_task"
+    route = build_task_route_label(latest_task)
+    imu_live = bool(telemetry.get("imu"))
+    robot_state = telemetry.get("state") if isinstance(telemetry.get("state"), dict) else {}
+    motor_status = telemetry.get("motor_status")
+    motor_live = bool(motor_status)
+
+    return {
+        "run_id": f"live_dashboard_eval_{datetime.now(timezone.utc).strftime('%Y%m%d')}",
+        "run_type": "baseline_system_evaluation",
+        "scenario": f"Live dashboard snapshot: {route}" if route else "Live dashboard task and telemetry snapshot",
+        "robot_id": robot_state.get("robot_id") or config.ROBOT_ID,
+        "task_source": task_source,
+        "dataset_version": "live_dashboard_wms_mqtt_snapshot_v0.1",
+        "model_version": "baseline_nav2_no_learning",
+        "baseline_version": "baseline_nav2_no_learning",
+        "control_policy": "rule_based_nav2_baseline",
+        "status": latest_status,
+        "task_total": len(tasks),
+        "task_success": task_counts["completed"],
+        "task_failed": task_counts["failed"] + task_counts["cancelled"] + task_counts["blocked"],
+        "task_success_rate": task_success_rate,
+        "started_at": pick_earliest_task_timestamp(tasks),
+        "finished_at": pick_latest_task_timestamp(tasks),
+        "latest_task_id": latest_task.get("task_id") if latest_task else None,
+        "latest_task_route": route,
+        "latest_task_status": latest_status,
+        "result_scope": "live_dashboard_snapshot_plus_baseline_contract_not_model_training",
+        "failure_cases": build_live_failure_cases(tasks, motor_status),
+        "quality_checks": {
+            "live_task_source_connected": task_error is None,
+            "live_task_count": len(tasks),
+            "live_imu_payload": imu_live,
+            "live_motor_status_payload": motor_live,
+            "live_robot_state_payload": bool(telemetry.get("state")),
+            "live_mqtt_connection": mqtt_status.get("connection", {}).get("status"),
+            "live_task_error": task_error,
+        },
+        "feature_snapshot": {
+            "imu_state": telemetry.get("imu", {}).get("state") if isinstance(telemetry.get("imu"), dict) else None,
+            "motor_status": motor_status.get("status") if isinstance(motor_status, dict) else None,
+            "motor_error_rpm": extract_motor_error_rpm(motor_status),
+            "motor_pwm": extract_motor_pwm(motor_status),
+            "updated_at": now,
+        },
+    }
+
+
+def count_live_task_statuses(tasks: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"completed": 0, "failed": 0, "cancelled": 0, "blocked": 0}
+    for task in tasks:
+        status = str(task.get("status") or task.get("source_status") or "").lower()
+        if status in {"completed", "succeeded", "success"}:
+            counts["completed"] += 1
+        elif status in {"failed", "error"}:
+            counts["failed"] += 1
+        elif status in {"cancelled", "canceled"}:
+            counts["cancelled"] += 1
+        elif status == "blocked":
+            counts["blocked"] += 1
+    return counts
+
+
+def select_latest_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not tasks:
+        return None
+
+    def _task_sort_key(task: dict[str, Any]) -> tuple[int, str]:
+        status = str(task.get("status") or "").lower()
+        active_rank = 1 if status in {"queued", "dispatching", "running", "blocked"} else 0
+        timestamp = (
+            task.get("updated_at")
+            or task.get("last_update_at")
+            or task.get("created_at")
+            or task.get("completed_at")
+            or ""
+        )
+        return active_rank, str(timestamp)
+
+    return sorted(tasks, key=_task_sort_key, reverse=True)[0]
+
+
+def build_task_route_label(task: dict[str, Any] | None) -> str:
+    if not task:
+        return ""
+    pickup = task.get("pickup_station") or task.get("pickup") or "-"
+    dropoff = task.get("dropoff_station") or task.get("dropoff") or task.get("target_name") or "-"
+    return f"{pickup} -> {dropoff}"
+
+
+def pick_latest_task_timestamp(tasks: list[dict[str, Any]]) -> str | None:
+    values = [
+        task.get("updated_at") or task.get("last_update_at") or task.get("completed_at") or task.get("created_at")
+        for task in tasks
+    ]
+    return max((str(value) for value in values if value), default=None)
+
+
+def pick_earliest_task_timestamp(tasks: list[dict[str, Any]]) -> str | None:
+    values = [task.get("created_at") or task.get("started_at") or task.get("updated_at") for task in tasks]
+    return min((str(value) for value in values if value), default=None)
+
+
+def build_live_failure_cases(tasks: list[dict[str, Any]], motor_status: Any) -> list[dict[str, Any]]:
+    failure_cases: list[dict[str, Any]] = []
+    for task in tasks:
+        status = str(task.get("status") or task.get("source_status") or "").lower()
+        if status not in {"blocked", "failed", "cancelled", "canceled"}:
+            continue
+        task_id = task.get("task_id") or task.get("id") or task.get("task_name") or "task"
+        failure_cases.append(
+            {
+                "failure_case_id": f"live_task_{task_id}_{status}",
+                "task_id": task_id,
+                "failure_type": f"task_{status}",
+                "severity": "warning" if status == "blocked" else "info",
+                "summary": f"Live WMS task is {status}: {build_task_route_label(task)}.",
+                "evidence": ["GET /api/tasks", "WebSocket /ws/status"],
+                "status": "open" if status in {"blocked", "failed"} else "reviewed",
+            }
+        )
+
+    if isinstance(motor_status, dict) and str(motor_status.get("status") or "").lower() == "stale":
+        failure_cases.append(
+            {
+                "failure_case_id": "live_motor_status_stale",
+                "task_id": None,
+                "failure_type": "telemetry_stale",
+                "severity": "info",
+                "summary": "Motor bench status is stale after safe stop; command path remains explicit and bounded.",
+                "evidence": ["GET /api/robot/status", "robot/motor/status"],
+                "status": "reviewed",
+            }
+        )
+
+    return failure_cases[:6]
+
+
+def extract_motor_state(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    motor_state = payload.get("motor_state") or payload.get("motorState")
+    if isinstance(motor_state, dict):
+        return motor_state
+    if isinstance(motor_state, str) and motor_state.strip():
+        try:
+            parsed = json.loads(motor_state)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def extract_motor_error_rpm(payload: Any) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+    motor_state = extract_motor_state(payload)
+    value = motor_state.get("error_rpm", payload.get("error_rpm"))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_motor_pwm(payload: Any) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+    motor_state = extract_motor_state(payload)
+    value = motor_state.get("pwm", motor_state.get("pwm_duty", payload.get("pwm")))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def build_sim_preview_response(request: Request) -> SimPreviewResponse:

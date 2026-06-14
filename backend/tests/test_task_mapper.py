@@ -83,3 +83,18 @@ def test_map_amr_http_fields_from_mock_wms():
     assert mapped["progress"] == 100
     assert mapped["blocked_reason"] == "NavigateToPose result: SUCCEEDED."
     assert mapped["last_event"] == "NavigateToPose result: SUCCEEDED."
+
+
+def test_map_dashboard_wms_task_name_restores_route_fields():
+    raw = {
+        "task_name": "dashboard_transport_start_zone_to_station_a_20260614T031800Z",
+        "target_name": "station_a",
+        "status": "pending",
+        "created_at": "2026-06-14T03:18:00Z",
+    }
+
+    mapped = map_amr_task_to_dashboard_task(raw)
+
+    assert mapped["task_type"] == "transport"
+    assert mapped["pickup_station"] == "start_zone"
+    assert mapped["dropoff_station"] == "station_a"

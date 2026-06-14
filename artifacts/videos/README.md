@@ -12,3 +12,9 @@
 ```bash
 node scripts/capture_dashboard_artifacts.js --dispatch --motor-demo --record-ms 75000
 ```
+
+当前仓库已保留：
+
+- `dashboard-demo-walkthrough.webm`：用于 GitHub / 作品集预览的最终页面走查录屏素材，包含 Dashboard、WMS Task Dispatch、硬件遥测、Motor bench 与 Dashboard 内嵌 RViz Path View。
+
+说明：Playwright 录屏只捕获浏览器页面，不捕获桌面上单独打开的原生 RViz / Gazebo 窗口。如需展示 Gazebo 本体窗口，应另行使用桌面录屏工具补录。

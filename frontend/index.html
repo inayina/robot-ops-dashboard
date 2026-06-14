@@ -433,8 +433,19 @@
               <div class="sim-preview-frame" aria-label="Simulation preview">
                 <img id="simPreviewImage" class="sim-preview-image" alt="Gazebo path preview stream" hidden />
                 <div id="simPreviewPlaceholder" class="sim-preview-placeholder">
-                  <span class="sim-preview-amr"></span>
-                  <strong>Gazebo path view not connected</strong>
+                  <div id="simRouteMap" class="sim-route-map" aria-label="Mock route overlay">
+                    <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
+                      <path class="sim-route-grid" d="M18 24 H82 V78 H18 Z" />
+                      <path id="simRoutePath" class="sim-route-path" d="M18 78 C42 70 58 32 82 24" />
+                      <circle id="simRouteRobot" class="sim-route-robot" cx="18" cy="78" r="4" />
+                    </svg>
+                    <span class="sim-station start-zone">start</span>
+                    <span class="sim-station station-a">A</span>
+                    <span class="sim-station station-b">B</span>
+                    <span class="sim-station dock-a">dock</span>
+                  </div>
+                  <strong id="simRouteLabel">Offline / Mock Preview</strong>
+                  <em id="simRouteProgress">Gazebo / RViz stream not connected; showing WMS route overlay</em>
                 </div>
               </div>
             </div>
@@ -448,15 +459,15 @@
         </aside>
       </main>
 
-      <section class="evaluation-layer portfolio-evaluation" aria-label="Evaluation and ML-ready data layer">
+      <section class="evaluation-layer portfolio-evaluation" aria-label="System evaluation and validation layer">
         <div class="evaluation-hero">
           <div>
-            <p class="section-kicker">Data & Evaluation Layer</p>
-            <h2>Evaluation & ML-ready Data Layer</h2>
-            <p class="evaluation-subtitle">Data sources to evaluation run, quality checks, and ML-ready export</p>
+            <p class="section-kicker">System Evaluation Layer</p>
+            <h2>System Evaluation & Validation Layer</h2>
+            <p class="evaluation-subtitle">AMR task loop, Dashboard APIs, WebSocket, MQTT telemetry, and motor bench evidence</p>
             <p class="evaluation-zh">
-              将 ROS2 仿真任务、真实硬件 IMU/Motor 状态、任务结果、失败样本和链路健康信息统一到
-              <strong>run_id</strong> / <strong>dataset_version</strong> / <strong>model_version</strong> 结构下。
+              将 AMR Mock WMS 任务闭环、Dashboard API、WebSocket 状态流、MQTT 遥测和 Motor bench 边界统一到
+              <strong>run_id</strong> / <strong>dataset_version</strong> / <strong>baseline_version</strong> 验收记录下。
             </p>
           </div>
           <div class="evaluation-hero-status">
@@ -474,19 +485,19 @@
             <strong>Task Status</strong>
           </div>
           <span class="evaluation-flow-arrow">↓</span>
-          <div class="evaluation-flow-node">Evaluation Run</div>
+          <div class="evaluation-flow-node">Validation Run</div>
           <span class="evaluation-flow-arrow">↓</span>
-          <div class="evaluation-flow-node">Quality Checks</div>
+          <div class="evaluation-flow-node">API / Telemetry Checks</div>
           <span class="evaluation-flow-arrow">↓</span>
-          <div class="evaluation-flow-node">ML-ready Export</div>
+          <div class="evaluation-flow-node">Safety Boundary Evidence</div>
         </div>
 
         <div class="evaluation-grid portfolio-evaluation-grid">
           <article class="cockpit-card evaluation-card experiment-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">Experiment Record</p>
-                <h2>实验记录</h2>
+                <p class="section-kicker">System Validation Summary</p>
+                <h2>系统验收摘要</h2>
               </div>
               <span id="evalRunStatus" class="eval-card-state mono" data-state="unknown">waiting</span>
             </div>
@@ -500,16 +511,20 @@
                   <strong id="evalDatasetVersion" class="mono">-</strong>
                 </div>
                 <div>
-                  <span>model_version</span>
+                  <span>baseline_version</span>
                   <strong id="evalModelVersion" class="mono">-</strong>
                 </div>
                 <div>
-                  <span>policy_type</span>
+                  <span>control_policy</span>
                   <strong id="evalPolicyType" class="mono">-</strong>
                 </div>
                 <div>
-                  <span>task_success_rate</span>
-                  <strong id="evalSuccessRate" class="mono">--%</strong>
+                  <span>result_scope</span>
+                  <strong id="evalResultScope" class="mono">-</strong>
+                </div>
+                <div>
+                  <span>scenario</span>
+                  <strong id="evalScenario" class="mono">-</strong>
                 </div>
               </div>
             </div>
@@ -518,18 +533,20 @@
           <article class="cockpit-card evaluation-card failure-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">Failure & Quality Checks</p>
-                <h2>失败与质量检查</h2>
+                <p class="section-kicker">Task Execution Metrics</p>
+                <h2>任务闭环指标</h2>
               </div>
               <p id="evalFailureMeta" class="compact-meta">-- cases</p>
             </div>
             <div class="card-body evaluation-card-body">
               <div class="quality-grid">
+                <div><span>task_success_rate</span><strong id="evalSuccessRate" class="mono">--%</strong></div>
+                <div><span>task_success</span><strong id="evalTaskSuccess" class="mono">--</strong></div>
+                <div><span>task_failed</span><strong id="evalTaskFailed" class="mono">--</strong></div>
+                <div><span>task_total</span><strong id="evalTaskTotal" class="mono">--</strong></div>
                 <div><span>failure_cases</span><strong id="evalFailureCasesCount" class="mono">--</strong></div>
                 <div><span>timestamp_check</span><strong id="evalTimestampCheck" class="mono">pending</strong></div>
-                <div><span>missing_value_check</span><strong id="evalMissingValueCheck" class="mono">pending</strong></div>
                 <div><span>source_check</span><strong id="evalSourceCheck" class="mono">pending</strong></div>
-                <div><span>mqtt_delay</span><strong id="evalMqttDelay" class="mono">--</strong></div>
                 <div><span>status_timeout</span><strong id="evalStatusTimeout" class="mono">--</strong></div>
               </div>
             </div>
@@ -538,19 +555,22 @@
           <article class="cockpit-card evaluation-card feature-card">
             <div class="card-head">
               <div>
-                <p class="section-kicker">ML-ready Features</p>
-                <h2>特征导出</h2>
+                <p class="section-kicker">Telemetry & Motor Bench Metrics</p>
+                <h2>遥测与电机 bench</h2>
               </div>
               <strong id="evalBaselineLabel" class="eval-tag" data-state="baseline">baseline</strong>
             </div>
             <div class="card-body evaluation-card-body">
               <div class="feature-export-grid">
-                <div><span>task_result</span><strong id="evalTaskResult" class="mono">-</strong></div>
-                <div><span>recovery_count</span><strong id="evalRecoveryCount" class="mono">-</strong></div>
-                <div><span>imu_rms</span><strong id="evalImuRms" class="mono">-</strong></div>
+                <div><span>amr_e2e_status</span><strong id="evalAmrE2eStatus" class="mono">-</strong></div>
+                <div><span>dashboard_api_status</span><strong id="evalDashboardApiStatus" class="mono">-</strong></div>
+                <div><span>websocket_status</span><strong id="evalWebsocketStatus" class="mono">-</strong></div>
+                <div><span>mqtt_telemetry_status</span><strong id="evalMqttTelemetryStatus" class="mono">-</strong></div>
+                <div><span>motor_bench_status</span><strong id="evalMotorBenchStatus" class="mono">-</strong></div>
+                <div><span>imu_payload</span><strong id="evalImuRms" class="mono">-</strong></div>
                 <div><span>motor_error</span><strong id="evalMotorError" class="mono">-</strong></div>
-                <div><span>pwm_output</span><strong id="evalPwmOutput" class="mono">-</strong></div>
-                <div><span>label</span><strong id="evalFeatureLabel" class="mono">-</strong></div>
+                <div><span>no_real_training_claim</span><strong id="evalNoTrainingClaim" class="mono">true</strong></div>
+                <div><span>evidence_links</span><strong id="evalEvidenceLinks" class="mono">-</strong></div>
               </div>
             </div>
           </article>
@@ -558,7 +578,7 @@
 
         <aside class="evaluation-scope-note" aria-label="Current evaluation scope">
           <strong>Current Scope</strong>
-          <span>Baseline system evaluation / mock evaluation structure.</span>
+          <span>System validation layer with baseline / mock / reserved boundaries.</span>
           <span>No real VLA, RL, or world model training result is claimed.</span>
         </aside>
       </section>

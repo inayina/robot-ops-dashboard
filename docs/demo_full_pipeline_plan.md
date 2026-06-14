@@ -66,7 +66,7 @@ mock / reserved / planned：
 
 ### 1.3 `robot-ops-dashboard`
 
-作用：FastAPI / MQTT / WebSocket / Dashboard / Evaluation Summary / ML-ready Data Layer 统一展示入口。
+作用：FastAPI / MQTT / WebSocket / Dashboard / System Evaluation & Validation Layer 统一展示入口。
 
 已经具备：
 
@@ -88,7 +88,7 @@ mock / reserved / planned：
 - 前端：
   - 纯 HTML / CSS / JavaScript cockpit。
   - Task / Robot Link / IMU / Motor / Event Stream。
-  - Evaluation & ML-ready Data Layer。
+  - System Evaluation & Validation Layer。
 - MQTT：
   - 订阅 `robot/imu`、`robot/state`、`robot/motor/status`、`robot/alarm`。
   - 发布 `robot/motor/cmd`，仅用于低频受限 bench 命令。
@@ -155,7 +155,7 @@ Evaluation 展示闭环：
 mock / baseline eval run data
   -> GET /api/evaluation/summary and /api/evaluation/*
   -> Evaluation Summary
-  -> ML-ready Data Layer
+  -> System Evaluation & Validation Layer
 ```
 
 最终画面需要让面试官看到：
@@ -355,7 +355,7 @@ http://127.0.0.1:8001/frontend/
 预期：
 
 - 首屏显示 Task / Robot Link / IMU / Motor / Event Stream / Simulation Preview。
-- 第二屏显示 Evaluation Summary / ML-ready Data Layer。
+- 第二屏显示 System Evaluation & Validation Layer。
 - 网络失败或后端不可用时显示 `disconnected` 或明确错误，不白屏。
 - 页面文案不宣称 Dashboard 是完整控制器或真实 AI 训练平台。
 
@@ -366,8 +366,7 @@ http://127.0.0.1:8001/frontend/
 必选截图：
 
 - Dashboard 总览：首屏 cockpit，包含 Task、Robot Link、IMU、Motor、Simulation Preview。
-- Evaluation Summary：展示 `run_id`、成功率、failure cases、quality checks。
-- ML-ready Data Layer：展示 dataset / model / run 数据关系。
+- System Evaluation & Validation Layer：展示 `run_id`、dataset/model/run 数据关系、成功率、failure cases、quality checks。
 - Robot Status / Motor / IMU 状态：突出 MQTT、micro-ROS、IMU 姿态、motor telemetry。
 - API 返回结果：`/health`、`/api/tasks`、`/api/robot/status`、`/api/evaluation/summary`。
 - 终端联调状态：AMR API、Dashboard backend、MQTT、micro-ROS Agent、bridge 状态。
@@ -382,8 +381,8 @@ http://127.0.0.1:8001/frontend/
 推荐命名：
 
 - `dashboard-overview-1440x900.png`
-- `dashboard-evaluation-summary-1440x900.png`
-- `dashboard-ml-ready-data-layer-1440x900.png`
+- `dashboard-evaluation-platform-1440x900.png`
+- `dashboard-failure-cases-crop.png`
 - `dashboard-robot-status-1440x900.png`
 - `api-health-and-summary-terminal.png`
 - `amr-gazebo-rviz-task-result.png`
@@ -407,7 +406,7 @@ http://127.0.0.1:8001/frontend/
 画面：Motor Bench Flow、target / actual / pwm / fault。  
 旁白：这里是 N20 单电机 bench 的低频受限命令链路，不是整车控制器；命令必须走 backend 安全接口。
 
-44-55s：Evaluation & ML-ready Data Layer  
+44-55s：System Evaluation & Validation Layer
 画面：滚动到第二屏。  
 旁白：系统把 run、dataset、model baseline、失败样本和质量检查组织成评测摘要，便于后续 ML-ready 数据沉淀。
 
@@ -428,7 +427,7 @@ http://127.0.0.1:8001/frontend/
 90-125s：Motor command -> MQTT -> ROS 2 -> N20 bench -> Dashboard  
 展示 `POST /api/robot/motor/cmd` 的限幅命令、MQTT `robot/motor/cmd`、ROS 2 `/motor/cmd`、encoder status 和 STOP 口径。
 
-125-155s：Evaluation Summary / ML-ready Data Layer  
+125-155s：System Evaluation & Validation Layer
 展示 `run_id`、`dataset_version`、`model_version`、success rate、failure cases、quality checks、compute status。
 
 155-180s：安全边界与失败展示  

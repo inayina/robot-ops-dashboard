@@ -182,12 +182,14 @@ def find_window_target(config: Config) -> WindowTarget | None:
     if not candidates:
         return None
 
-    def score(candidate: WindowTarget) -> tuple[int, int, int, int]:
+    def score(candidate: WindowTarget) -> tuple[int, int, int, int, int, int]:
         area = candidate.geometry.width * candidate.geometry.height
-        is_exact_rviz_surface = 1 if candidate.title.lower() == "rviz2" else 0
         has_rviz_class = 1 if "rviz" in candidate.class_name.lower() else 0
+        has_rviz_title = 1 if "rviz" in candidate.title.lower() else 0
+        is_exact_rviz_surface = 1 if candidate.title.lower() == "rviz2" else 0
+        usable_shape = 1 if candidate.geometry.width >= 800 and candidate.geometry.height >= 600 else 0
         title_len = len(candidate.title)
-        return (is_exact_rviz_surface, has_rviz_class, area, title_len)
+        return (has_rviz_class, is_exact_rviz_surface, usable_shape, area, has_rviz_title, title_len)
 
     return max(candidates, key=score)
 
