@@ -50,6 +50,10 @@ def _env_flag(name: str, default: str) -> bool:
 # - SIM_PREVIEW_MJPEG_URL / GAZEBO_CAMERA_MJPEG_URL: optional upstream MJPEG URL created by the AMR/Gazebo side
 ROBOT_OPS_TASK_SOURCE = os.getenv("ROBOT_OPS_TASK_SOURCE", "mock_json")
 AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")
+ROBOT_DATA_PLATFORM_BASE_URL = os.getenv(
+    "ROBOT_DATA_PLATFORM_BASE_URL", "http://127.0.0.1:9100/data/v1"
+).rstrip("/")
+HOC_BASE_URL = os.getenv("HOC_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "mqtt://127.0.0.1:1883")
 ROBOT_ID = os.getenv("ROBOT_ID", "amr-001")
 MQTT_MOTOR_CMD_TOPIC = os.getenv("MQTT_MOTOR_CMD_TOPIC", "robot/motor/cmd")
@@ -82,6 +86,16 @@ try:
     AMR_HTTP_TIMEOUT_SECONDS = int(os.getenv("AMR_HTTP_TIMEOUT_SECONDS", "3"))
 except ValueError:
     AMR_HTTP_TIMEOUT_SECONDS = 3
+
+try:
+    ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS = float(
+        os.getenv("ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS", "5")
+    )
+except ValueError:
+    ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS = 5.0
+
+if ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS <= 0:
+    ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS = 5.0
 
 try:
     MQTT_KEEPALIVE_SECONDS = int(os.getenv("MQTT_KEEPALIVE_SECONDS", "60"))

@@ -42,6 +42,10 @@ from .schemas import (
 )
 from .services.mock_data_service import MockDataError, MockDataService
 from .services.amr_http_service import AmrHttpService, AmrHttpError
+from .services.robot_data_platform_service import (
+    RobotDataPlatformError,
+    RobotDataPlatformService,
+)
 from .services.mjpeg_stream_proxy import MjpegStreamProxy, MjpegStreamProxyError
 from .services.mqtt_motor_command import MotorCommandPublishError, RobotMqttMotorCommandService
 from .services.mqtt_robot_status import RobotMqttStatusService
@@ -153,6 +157,24 @@ def get_amr_service() -> AmrHttpService:
         timeout=config.AMR_HTTP_TIMEOUT_SECONDS,
         trust_env=False,
     )
+
+
+def get_robot_data_platform_service() -> RobotDataPlatformService:
+    return RobotDataPlatformService(
+        base_url=config.ROBOT_DATA_PLATFORM_BASE_URL,
+        timeout=config.ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS,
+        hoc_base_url=config.HOC_BASE_URL,
+        trust_env=False,
+    )
+
+
+def platform_envelope(action: str) -> MockEnvelope:
+    service = get_robot_data_platform_service()
+    try:
+        payload = getattr(service, action)()
+        return MockEnvelope(**payload)
+    except RobotDataPlatformError as exc:
+        raise_api_error(502, "robot_data_platform_error", str(exc), config.ROBOT_DATA_PLATFORM_BASE_URL)
 
 
 def get_mjpeg_stream_proxy() -> MjpegStreamProxy:
@@ -767,12 +789,12 @@ async def get_alerts() -> MockEnvelope:
 
 @app.get("/api/evaluation/runs", response_model=MockEnvelope)
 async def get_evaluation_runs() -> MockEnvelope:
-    return load_mock_envelope(EVALUATION_RUNS_FILE)
+    return platform_envelope("evaluation_runs")
 
 
 @app.get("/api/evaluation/datasets", response_model=MockEnvelope)
 async def get_evaluation_datasets() -> MockEnvelope:
-    return load_mock_envelope(DATASET_VERSIONS_FILE)
+    return platform_envelope("dataset_versions")
 
 
 @app.get("/api/evaluation/models", response_model=MockEnvelope)
@@ -782,7 +804,15 @@ async def get_evaluation_models() -> MockEnvelope:
 
 @app.get("/api/evaluation/failure-cases", response_model=MockEnvelope)
 async def get_evaluation_failure_cases() -> MockEnvelope:
-    return load_mock_envelope(FAILURE_CASES_FILE)
+    return platform_envelope("failure_cases")
+
+
+@app.get("/api/evaluation/episodes/{episode_id}")
+async def get_evaluation_episode(episode_id: str) -> dict[str, Any]:
+    try:
+        return get_robot_data_platform_service().episode(episode_id)
+    except RobotDataPlatformError as exc:
+        raise_api_error(502, "robot_data_platform_error", str(exc), config.ROBOT_DATA_PLATFORM_BASE_URL)
 
 
 @app.get("/api/evaluation/compute", response_model=MockEnvelope)

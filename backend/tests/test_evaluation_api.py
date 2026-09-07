@@ -14,26 +14,51 @@ def get(path: str) -> httpx.Response:
     return asyncio.run(_get(path))
 
 
-def test_evaluation_runs_api_returns_mock_baseline_contract():
+class FakePlatformService:
+    def evaluation_runs(self):
+        return {"generated_at": "2026-09-06T00:00:00Z", "source": "robot-platform-service", "data": [{
+            "run_id": "01944444-4444-7444-8444-444444444444",
+            "evaluation_run_id": "01944444-4444-7444-8444-444444444444",
+            "run_type": "platform_evaluation", "dataset_version": "release-v1",
+            "dataset_version_id": "01977777-7777-7777-8777-777777777777",
+            "model_version": "model-v1", "result_scope": "platform_imported_existing_evaluation",
+            "status": "completed", "task_total": 1, "task_success": 0,
+            "task_failed": 1, "task_success_rate": 0.0,
+        }]}
+
+    def dataset_versions(self):
+        return {"generated_at": "2026-09-06T00:00:00Z", "source": "robot-platform-service", "data": [{
+            "dataset_version": "release-v1", "dataset_version_id": "01977777-7777-7777-8777-777777777777",
+            "dataset_type": "release-v0", "sample_count": 50, "is_mock": False,
+        }]}
+
+    def failure_cases(self):
+        return {"generated_at": "2026-09-06T00:00:00Z", "source": "robot-platform-service", "data": [{
+            "failure_case_id": "01933333-3333-7333-8333-333333333333",
+            "episode_id": "01955555-5555-7555-8555-555555555555",
+            "failure_type": "reach", "summary": "gripper did not close",
+            "replay_url": "http://127.0.0.1:8080/?episode_id=01955555-5555-7555-8555-555555555555",
+        }]}
+
+    def episode(self, episode_id):
+        return {"episode": {"episode_id": episode_id}, "artifacts": []}
+
+
+def test_evaluation_runs_api_returns_platform_contract(monkeypatch):
+    monkeypatch.setattr(main, "get_robot_data_platform_service", FakePlatformService)
     resp = get("/api/evaluation/runs")
     body = resp.json()
 
     assert resp.status_code == 200
-    assert body["source"] == "mock_robot_data_evaluation_runs"
+    assert body["source"] == "robot-platform-service"
     assert isinstance(body["data"], list)
     assert body["data"]
-
-    allowed_run_types = {"mock_evaluation", "baseline_system_evaluation", "interface_reserved"}
     for run in body["data"]:
-        assert run["run_type"] in allowed_run_types
+        assert run["run_type"] == "platform_evaluation"
         assert "run_id" in run
         assert "dataset_version" in run
         assert "model_version" in run
         assert "result_scope" in run
-
-    reserved_run = next(run for run in body["data"] if run["run_type"] == "interface_reserved")
-    assert reserved_run["task_success_rate"] is None
-    assert "reserved" in reserved_run["result_scope"]
 
 
 def test_evaluation_summary_returns_core_fields():
@@ -69,13 +94,22 @@ def test_evaluation_summary_returns_core_fields():
     assert "reserved" in body["gpu_usage"]
 
 
-def test_evaluation_registry_and_compute_routes_are_read_only_payloads():
-    paths = [
-        "/api/evaluation/datasets",
-        "/api/evaluation/models",
-        "/api/evaluation/failure-cases",
-        "/api/evaluation/compute",
-    ]
+def test_platform_dataset_failure_and_episode_routes(monkeypatch):
+    monkeypatch.setattr(main, "get_robot_data_platform_service", FakePlatformService)
+    for path in ["/api/evaluation/datasets", "/api/evaluation/failure-cases"]:
+        resp = get(path)
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["source"] == "robot-platform-service"
+        assert isinstance(body["data"], list)
+    episode_id = "01955555-5555-7555-8555-555555555555"
+    resp = get(f"/api/evaluation/episodes/{episode_id}")
+    assert resp.status_code == 200
+    assert resp.json()["episode"]["episode_id"] == episode_id
+
+
+def test_model_and_compute_routes_remain_explicit_mock_or_reserved():
+    paths = ["/api/evaluation/models", "/api/evaluation/compute"]
 
     for path in paths:
         resp = get(path)

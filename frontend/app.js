@@ -1,4 +1,8 @@
-const API_BASE_URL = window.API_BASE_URL || "http://127.0.0.1:9000";
+const queryParameters = new URLSearchParams(window.location.search);
+const API_BASE_URL =
+  window.API_BASE_URL ||
+  queryParameters.get("api_base_url") ||
+  "http://127.0.0.1:9000";
 const REFRESH_INTERVAL_MS = 3000;
 const WS_RECONNECT_DELAY_MS = 3000;
 const IMU_STALE_AFTER_MS = 2000;
@@ -30,38 +34,6 @@ const DATA_FILES = {
 };
 
 const EVALUATION_FALLBACK_PAYLOADS = {
-  evaluationRuns: {
-    generated_at: "offline",
-    source: "offline_mock_fallback",
-    data: [
-      {
-        run_id: "run_mock_eval_offline_portfolio_001",
-        run_type: "mock_evaluation",
-        scenario: "Offline portfolio fallback for evaluation data layer",
-        dataset_version: "dataset_amr_mock_wms_v0_1",
-        model_version: "nav2_baseline_no_ml_v0",
-        status: "completed",
-        task_total: 5,
-        task_success: 4,
-        task_failed: 1,
-        task_success_rate: 0.8,
-        result_scope: "baseline_system_evaluation_only_not_model_training",
-      },
-    ],
-  },
-  evaluationDatasets: {
-    generated_at: "offline",
-    source: "offline_mock_fallback",
-    data: [
-      {
-        dataset_version: "dataset_amr_mock_wms_v0_1",
-        dataset_type: "amr_task_lifecycle",
-        sample_count: 5,
-        is_mock: true,
-        source_chain: "ROS2/Nav2 task + MQTT telemetry + Dashboard status",
-      },
-    ],
-  },
   evaluationModels: {
     generated_at: "offline",
     source: "offline_mock_fallback",
@@ -73,28 +45,6 @@ const EVALUATION_FALLBACK_PAYLOADS = {
         source: "Nav2 + Mock WMS executor baseline",
         metrics_available: true,
         notes: "Baseline system evaluation only. No ML model training result is claimed.",
-      },
-    ],
-  },
-  evaluationFailureCases: {
-    generated_at: "offline",
-    source: "offline_mock_fallback",
-    data: [
-      {
-        failure_case_id: "failcase_mock_wms_nav_timeout_001",
-        run_id: "run_mock_eval_offline_portfolio_001",
-        failure_type: "navigation_timeout_or_blocked_task",
-        severity: "warning",
-        summary: "Mock WMS task entered blocked state during baseline system evaluation.",
-        status: "open",
-      },
-      {
-        failure_case_id: "failcase_mqtt_motor_stale_001",
-        run_id: "run_mock_eval_offline_portfolio_001",
-        failure_type: "telemetry_stale",
-        severity: "info",
-        summary: "Motor bench status can become stale when MQTT publisher is not running.",
-        status: "reviewed",
       },
     ],
   },
@@ -319,6 +269,7 @@ const rootNodes = {
   evalTaskTotal: document.querySelector("#evalTaskTotal"),
   evalBaselineNote: document.querySelector("#evalBaselineNote"),
   evalDatasetList: document.querySelector("#evalDatasetList"),
+  evalRunList: document.querySelector("#evalRunList"),
   evalModelList: document.querySelector("#evalModelList"),
   evalFailureMeta: document.querySelector("#evalFailureMeta"),
   evalFailureList: document.querySelector("#evalFailureList"),
@@ -386,10 +337,12 @@ const simPreviewRuntime = {
   loadError: false,
 };
 let motorControlsBusy = false;
+let selectedDatasetVersionId = null;
 
 setupWmsTaskControls();
 setupMotorCommandControls();
 setupSimPreviewImage();
+setupEvaluationDrillDown();
 renderImuStatus(null, { loading: true });
 renderMotorStatus(null, { loading: true });
 appendEventStreamEntry({
@@ -2790,17 +2743,26 @@ function renderEvaluationLayer() {
   const failures = getCachedDataList("evaluationFailureCases");
   const compute = getCachedDataList("evaluationCompute");
   const summary = cachedPayloads.evaluationSummary || null;
-  const liveRun = buildRunFromEvaluationSummary(summary);
+  const platformBacked = cachedPayloads.evaluationRuns?.source === "robot-platform-service";
+  const liveRun = platformBacked ? null : buildRunFromEvaluationSummary(summary);
   const summaryFailures = Array.isArray(summary?.failure_cases) ? summary.failure_cases : [];
-  const mergedFailures = liveRun && summaryFailures.length ? summaryFailures : mergeEvaluationFailures(summaryFailures, failures);
+  const mergedFailures = platformBacked
+    ? failures
+    : liveRun && summaryFailures.length
+    ? summaryFailures
+    : mergeEvaluationFailures(summaryFailures, failures);
   const usingOfflineMock = isEvaluationOfflineMock();
+  const selectedRun = runs.find((run) => run.dataset_version_id === selectedDatasetVersionId);
   const currentRun =
+    selectedRun ||
+    runs[0] ||
     liveRun ||
     runs.find((run) => run.run_type === "baseline_system_evaluation") ||
     runs.find((run) => run.run_type === "mock_evaluation") ||
     runs[0] ||
     null;
-  const currentDataset = datasets.find((item) => item.dataset_version === currentRun?.dataset_version) || datasets[0] || null;
+  const currentDataset = datasets.find((item) => item.dataset_version_id === selectedDatasetVersionId) ||
+    datasets.find((item) => item.dataset_version === currentRun?.dataset_version) || datasets[0] || null;
   const currentModel = models.find((item) => item.model_version === currentRun?.model_version) || models[0] || null;
   const missingSections = [
     ["runs", runs],
@@ -2827,6 +2789,20 @@ function renderEvaluationLayer() {
   renderEvaluationFeatures(currentRun, currentDataset, currentModel, mergedFailures, summary);
   renderSystemValidationMetrics(summary, currentRun, usingOfflineMock);
   renderEvaluationComputeStatus(compute);
+  renderEvaluationRegistry(datasets, models);
+  renderEvaluationRunsList(runs);
+  renderEvaluationFailures(selectedDatasetVersionId
+    ? failures.filter((item) => item.dataset_version_id === selectedDatasetVersionId)
+    : failures);
+}
+
+function setupEvaluationDrillDown() {
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-dataset-version-id]");
+    if (!button) return;
+    selectedDatasetVersionId = button.dataset.datasetVersionId || null;
+    renderEvaluationLayer();
+  });
 }
 
 function buildRunFromEvaluationSummary(summary) {
@@ -3002,10 +2978,12 @@ function renderEvaluationRegistry(datasets, models) {
           .slice(0, 4)
           .map(
             (dataset) => `
-              <li>
+              <li class="platform-record ${dataset.dataset_version_id === selectedDatasetVersionId ? "selected" : ""}">
+                <button class="registry-action" type="button" data-dataset-version-id="${escapeHtml(dataset.dataset_version_id || "")}">
                 <strong>${escapeHtml(dataset.dataset_version || "-")}</strong>
                 <span>${escapeHtml(dataset.dataset_type || "-")} · ${escapeHtml(String(dataset.sample_count ?? "-"))} samples</span>
-                <em>${escapeHtml(dataset.is_mock ? "mock" : "external")} · ${escapeHtml(dataset.storage_ref || "no storage")}</em>
+                <em>${escapeHtml(dataset.is_mock ? "mock" : "platform")} · ${escapeHtml(dataset.content_sha256?.slice(0, 12) || "no fingerprint")}</em>
+                </button>
               </li>
             `
           )
@@ -3031,6 +3009,18 @@ function renderEvaluationRegistry(datasets, models) {
   }
 }
 
+function renderEvaluationRunsList(runs) {
+  if (!rootNodes.evalRunList) return;
+  rootNodes.evalRunList.innerHTML = runs.length
+    ? runs.slice(0, 6).map((run) => `
+        <li class="platform-record">
+          <strong>${escapeHtml(run.evaluation_run_id || run.run_id || "-")}</strong>
+          <span>${escapeHtml(run.dataset_version || "-")} · ${escapeHtml(run.scenario || "-")}</span>
+          <em>${escapeHtml(run.status || "-")} · ${escapeHtml(run.evidence_level || "-")}</em>
+        </li>`).join("")
+    : '<li class="empty-state">evaluation runs disconnected</li>';
+}
+
 function renderEvaluationFailures(failures) {
   if (rootNodes.evalFailureMeta) {
     const openCases = failures.filter((item) => item.status === "open").length;
@@ -3053,6 +3043,15 @@ function renderEvaluationFailures(failures) {
                 <strong>${escapeHtml(failure.failure_case_id || "-")}</strong>
                 <p>${escapeHtml(failure.summary || "-")}</p>
                 <em>${escapeHtml(failure.run_id || "-")} · ${escapeHtml(failure.failure_type || "-")}</em>
+                <p class="mono">Episode ${escapeHtml(failure.episode_id || "-")}</p>
+                <details class="failure-detail">
+                  <summary>Open Episode</summary>
+                  <ul>${(failure.artifacts || []).map((artifact) => `
+                    <li><strong>${escapeHtml(artifact.artifact_type || "artifact")}</strong><span class="mono">${escapeHtml(artifact.object_uri || "-")}</span></li>
+                  `).join("") || '<li>no replay artifact</li>'}</ul>
+                  <a href="${escapeHtml(`${API_BASE_URL}${failure.episode_url || ""}`)}" target="_blank" rel="noreferrer">Open API lineage</a>
+                </details>
+                <a class="replay-link" href="${escapeHtml(failure.replay_url || "#")}" target="_blank" rel="noreferrer">Replay / Diagnose</a>
               </div>
             </li>
           `
@@ -3095,6 +3094,9 @@ function isEvaluationOfflineMock() {
 }
 
 function evaluationTagState(runType) {
+  if (runType === "platform_evaluation") {
+    return "baseline";
+  }
   if (runType === "baseline_system_evaluation") {
     return "baseline";
   }
@@ -3105,6 +3107,9 @@ function evaluationTagState(runType) {
 }
 
 function evaluationRunTypeLabel(runType) {
+  if (runType === "platform_evaluation") {
+    return "platform";
+  }
   if (runType === "baseline_system_evaluation") {
     return "baseline";
   }
