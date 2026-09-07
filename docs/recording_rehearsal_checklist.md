@@ -34,7 +34,7 @@
 
 联调口令：
 
-- `8001` 只是前端静态页。
+- `8001` 只是 Vite 前端页。
 - `9000` 才是 backend API / WebSocket。
 - `1883` 是 MQTT broker。
 - `8888` 是 micro-ROS Agent UDP，不是 HTTP。
@@ -46,7 +46,7 @@
 命令：
 
 ```bash
-ps -eo pid=,args= | rg "navigation.launch.py|simulation.launch.py|gz sim|rviz2|parameter_bridge|robot_state_publisher|odom_tf_node|nav2_amcl/amcl|nav2_planner/planner_server|nav2_controller/controller_server|nav2_bt_navigator/bt_navigator|mock_wms_api|uvicorn|http.server|micro_ros_agent|motor_status_bridge|motor_cmd_bridge|microros_imu_to_mqtt_bridge|mosquitto"
+ps -eo pid=,args= | rg "navigation.launch.py|simulation.launch.py|gz sim|rviz2|parameter_bridge|robot_state_publisher|odom_tf_node|nav2_amcl/amcl|nav2_planner/planner_server|nav2_controller/controller_server|nav2_bt_navigator/bt_navigator|mock_wms_api|uvicorn|vite|micro_ros_agent|motor_status_bridge|motor_cmd_bridge|microros_imu_to_mqtt_bridge|mosquitto"
 ```
 
 只停止确认属于本轮的旧进程，例如旧 Dashboard backend / frontend：
@@ -306,7 +306,9 @@ curl --noproxy '*' http://127.0.0.1:9000/api/robot/status
 
 ```bash
 cd /home/ina/workspace/robot-ops-dashboard
-python3 -m http.server 8001 --bind 127.0.0.1
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 打开：
@@ -315,10 +317,10 @@ python3 -m http.server 8001 --bind 127.0.0.1
 http://127.0.0.1:8001/frontend/
 ```
 
-预期输出：静态页 `200 OK`。  
+预期输出：Vite 页面 `200 OK`。
 成功判断：页面可加载。  
 当前标准：frontend 默认就是 `API_BASE_URL=http://127.0.0.1:9000`，联调尽量不要改 backend 端口。  
-失败时先看：`8001` 是否被旧 http.server 占用，浏览器 console 是否报 `127.0.0.1:9000` 连接失败。
+失败时先看：`8001` 是否被旧服务占用、`frontend/node_modules` 是否安装，浏览器 console 是否报 `127.0.0.1:9000` 连接失败。
 
 ## Manual Verification Commands
 

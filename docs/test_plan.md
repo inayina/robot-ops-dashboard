@@ -75,7 +75,7 @@ env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest backend/tests -q
 - `GET /api/robot/status` 返回最新缓存状态
 - 前端 IMU 区域能从 `/api/robot/status` 与 `/ws/status` 读取 `robot/imu` 最新缓存
 - IMU `last_seen` 超过 3 秒显示 `stale`，超过 10 秒显示 `offline`
-- 前端静态检查：`node --check frontend/app.js`
+- 前端门禁：`npm --prefix frontend run typecheck && npm --prefix frontend test && npm --prefix frontend run build`
 - 前端布局稳定性检查：打开前端观察 30 秒，确认 `/ws/status` 刷新时 `System Health`、`AMR Task Status`、`IMU Status`、`Motor / Encoder`、`Event Stream` 卡片顺序、位置和高度不跳动
 - IMU 实时刷新检查：当 `last_message_at` 持续刷新时，仅数字、状态灯、水平条和姿态方块变化，Roll/Pitch/Yaw 保持固定三行占位
 - `robot/motor/status` mock publisher 可向本地 broker 发布对齐 `robot_status_api_bridge` 的测试数据，前端能解析 `motor_state` JSON 字符串

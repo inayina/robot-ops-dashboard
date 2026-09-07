@@ -177,6 +177,17 @@ def platform_envelope(action: str) -> MockEnvelope:
         raise_api_error(502, "robot_data_platform_error", str(exc), config.ROBOT_DATA_PLATFORM_BASE_URL)
 
 
+def inspection_run_envelope() -> MockEnvelope:
+    try:
+        payload = get_robot_data_platform_service().inspection_runs(
+            config.AMR_INSPECTION_SOURCE_REPO,
+            config.AMR_INSPECTION_SOURCE_RUN_ID,
+        )
+        return MockEnvelope(**payload)
+    except RobotDataPlatformError as exc:
+        raise_api_error(502, "robot_data_platform_error", str(exc), config.ROBOT_DATA_PLATFORM_BASE_URL)
+
+
 def get_mjpeg_stream_proxy() -> MjpegStreamProxy:
     return MjpegStreamProxy(
         upstream_url=config.GAZEBO_CAMERA_MJPEG_URL,
@@ -792,6 +803,11 @@ async def get_evaluation_runs() -> MockEnvelope:
     return platform_envelope("evaluation_runs")
 
 
+@app.get("/api/inspection/runs", response_model=MockEnvelope)
+async def get_inspection_runs() -> MockEnvelope:
+    return inspection_run_envelope()
+
+
 @app.get("/api/evaluation/datasets", response_model=MockEnvelope)
 async def get_evaluation_datasets() -> MockEnvelope:
     return platform_envelope("dataset_versions")
@@ -813,6 +829,36 @@ async def get_evaluation_episode(episode_id: str) -> dict[str, Any]:
         return get_robot_data_platform_service().episode(episode_id)
     except RobotDataPlatformError as exc:
         raise_api_error(502, "robot_data_platform_error", str(exc), config.ROBOT_DATA_PLATFORM_BASE_URL)
+
+
+_TELEMETRY_QUERY_KEYS = {
+    "robot_id", "device_id", "runtime_id", "session_id", "stream_name",
+    "from", "to", "aggregation", "window", "limit",
+}
+
+
+def _telemetry_query(request: Request, action: str) -> dict[str, Any]:
+    params = {
+        key: value for key, value in request.query_params.items()
+        if key in _TELEMETRY_QUERY_KEYS and value != ""
+    }
+    try:
+        return getattr(get_robot_data_platform_service(), action)(params)
+    except RobotDataPlatformError as exc:
+        raise_api_error(
+            502, "robot_data_platform_error", str(exc),
+            config.ROBOT_DATA_PLATFORM_BASE_URL,
+        )
+
+
+@app.get("/api/telemetry/latest")
+async def get_telemetry_latest(request: Request) -> dict[str, Any]:
+    return _telemetry_query(request, "telemetry_latest")
+
+
+@app.get("/api/telemetry/range")
+async def get_telemetry_range(request: Request) -> dict[str, Any]:
+    return _telemetry_query(request, "telemetry_range")
 
 
 @app.get("/api/evaluation/compute", response_model=MockEnvelope)

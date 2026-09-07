@@ -544,23 +544,29 @@ PY
 
 start_frontend_if_needed() {
   local frontend_html="$LOG_DIR/frontend_index.html"
+  local vite_bin="$DASHBOARD_ROOT/frontend/node_modules/.bin/vite"
 
   if [[ "$START_FRONTEND" == false ]]; then
     return 0
   fi
 
   if http_get "$FRONTEND_URL" "$frontend_html"; then
-    log "Frontend 静态服务已在运行：$FRONTEND_URL"
+    log "Frontend 服务已在运行：$FRONTEND_URL"
     return 0
   fi
 
-  log "启动前端静态服务：$FRONTEND_URL"
+  if [[ ! -x "$vite_bin" ]]; then
+    log "缺少 Vite：请先在 $DASHBOARD_ROOT/frontend 执行 npm install"
+    return 1
+  fi
+
+  log "启动 Vite 前端服务：$FRONTEND_URL"
   (
-    cd "$DASHBOARD_ROOT"
-    nohup python3 -m http.server "$FRONTEND_PORT" --bind "$FRONTEND_HOST"
+    cd "$DASHBOARD_ROOT/frontend"
+    exec "$vite_bin" --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort
   ) >"$FRONTEND_LOG" 2>&1 &
   write_pid_file "$!" "$FRONTEND_PID_FILE"
-  wait_for_http "$FRONTEND_URL" "Frontend static server" "$frontend_html"
+  wait_for_http "$FRONTEND_URL" "Vite frontend server" "$frontend_html"
 }
 
 start_separate_rviz_viewer_if_needed() {

@@ -15,6 +15,20 @@ def get(path: str) -> httpx.Response:
 
 
 class FakePlatformService:
+    def inspection_runs(self, source_repo, external_id):
+        return {"generated_at": "2026-09-07T00:00:00Z", "source": "robot-platform-service", "data": [{
+            "run_id": "01a079d3-e264-74ad-ad29-cbae817b6353",
+            "run_type": "platform_inspection",
+            "source_repo": source_repo,
+            "source_run_id": external_id,
+            "source_task_id": None,
+            "source_trigger": "manual_cli",
+            "status": "completed",
+            "task_total": 3,
+            "task_success": 3,
+            "warning_points": ["pump_b"],
+        }]}
+
     def evaluation_runs(self):
         return {"generated_at": "2026-09-06T00:00:00Z", "source": "robot-platform-service", "data": [{
             "run_id": "01944444-4444-7444-8444-444444444444",
@@ -59,6 +73,22 @@ def test_evaluation_runs_api_returns_platform_contract(monkeypatch):
         assert "dataset_version" in run
         assert "model_version" in run
         assert "result_scope" in run
+
+
+def test_inspection_runs_api_preserves_source_provenance(monkeypatch):
+    monkeypatch.setattr(main, "get_robot_data_platform_service", FakePlatformService)
+    resp = get("/api/inspection/runs")
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["source"] == "robot-platform-service"
+    assert len(body["data"]) == 1
+    run = body["data"][0]
+    assert run["run_type"] == "platform_inspection"
+    assert run["source_run_id"] == "inspection-run-002"
+    assert run["source_task_id"] is None
+    assert run["source_trigger"] == "manual_cli"
+    assert run["warning_points"] == ["pump_b"]
 
 
 def test_evaluation_summary_returns_core_fields():

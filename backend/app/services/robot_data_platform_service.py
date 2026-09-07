@@ -158,8 +158,78 @@ class RobotDataPlatformService:
             })
         return self._envelope(mapped)
 
+    def inspection_runs(self, source_repo: str, external_id: str) -> dict[str, Any]:
+        query = urlencode({"source_repo": source_repo, "external_id": external_id})
+        run = self._get(f"/runs?{query}")
+        lineage = self._get(f"/runs/{run['run_id']}/lineage")
+        episodes = lineage.get("episodes") or []
+        if len(episodes) != 1:
+            raise RobotDataPlatformError(
+                "AMR inspection lineage must contain exactly one route Episode"
+            )
+        episode_view = episodes[0]
+        episode = episode_view.get("episode") or {}
+        metadata = episode.get("metadata") or {}
+        points = metadata.get("points") or []
+        if not isinstance(points, list):
+            raise RobotDataPlatformError("AMR inspection points must be an array")
+        summary = metadata.get("summary") or {}
+        artifacts = episode_view.get("artifacts") or []
+        versions = episode_view.get("dataset_versions") or []
+        jobs = episode_view.get("processing_jobs") or []
+        report = next(
+            (item for item in artifacts if item.get("artifact_type") == "inspection_report"),
+            None,
+        )
+        warnings = [
+            point for point in points
+            if (point.get("finding") or {}).get("level") == "warning"
+        ]
+        completed = int(summary.get("completed_points") or 0)
+        total = int(summary.get("total_points") or len(points))
+        mapped = {
+            "run_id": run["run_id"],
+            "execution_run_id": run["run_id"],
+            "source_run_id": run["external_id"],
+            "run_type": "platform_inspection",
+            "scenario": episode.get("schema_id") or "amr_inspection",
+            "robot_id": run.get("robot_ref"),
+            "source_task_id": metadata.get("source_task_id"),
+            "source_trigger": metadata.get("source_trigger"),
+            "status": run.get("status"),
+            "task_total": total,
+            "task_success": completed,
+            "task_failed": int(summary.get("execution_failures") or 0),
+            "task_success_rate": (completed / total) if total else None,
+            "warning_count": len(warnings),
+            "warning_points": [point.get("point_id") for point in warnings],
+            "inspection_points": points,
+            "dataset_version_id": versions[0].get("dataset_version_id") if versions else None,
+            "dataset_version": versions[0].get("external_id") if versions else None,
+            "model_version": "amr_domain_owned_red_ratio_rule",
+            "started_at": run.get("started_at"),
+            "finished_at": run.get("ended_at"),
+            "evidence_level": "simulation_runtime_verified",
+            "evidence_boundary": metadata.get("evidence_boundary"),
+            "report_uri": report.get("object_uri") if report else None,
+            "report_sha256": report.get("sha256") if report else None,
+            "artifact_count": len(artifacts),
+            "processing_job_ids": [item.get("processing_job_id") for item in jobs],
+            "result_scope": "platform_imported_existing_amr_inspection",
+            "failure_case_ids": [],
+        }
+        return self._envelope([mapped])
+
     def episode(self, episode_id: str) -> dict[str, Any]:
         return self._get(f"/episodes/{episode_id}")
+
+    def telemetry_latest(self, params: dict[str, str]) -> dict[str, Any]:
+        """Read latest telemetry through Platform; never query TDengine here."""
+        return self._get(f"/telemetry/latest?{urlencode(params)}")
+
+    def telemetry_range(self, params: dict[str, str]) -> dict[str, Any]:
+        """Read a bounded raw or aggregate range through Platform."""
+        return self._get(f"/telemetry/range?{urlencode(params)}")
 
 
 def _numerator(result: dict[str, Any]) -> int:

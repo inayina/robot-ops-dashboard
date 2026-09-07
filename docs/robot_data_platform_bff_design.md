@@ -11,6 +11,10 @@
 - EvaluationRun / Episode lineage
 - FailureCase review
 
+Stage 3 增加一个只读 AMR inspection projection。BFF 按
+`source_repo + external_id` 查询 Platform Run，再读取 lineage；浏览器不读取 AMR
+SQLite、本地 artifact 路径或 ROS 2。
+
 Dashboard backend 是 BFF；浏览器不直连 PostgreSQL、MinIO 或 Platform。
 
 由于 Data Platform 本地 MinIO 占用 `127.0.0.1:9000`，联调时 BFF 使用 9002，
@@ -24,6 +28,8 @@ Dashboard backend 是 BFF；浏览器不直连 PostgreSQL、MinIO 或 Platform�
 - `ROBOT_DATA_PLATFORM_BASE_URL`，默认 `http://127.0.0.1:9100/data/v1`
 - `ROBOT_DATA_PLATFORM_TIMEOUT_SECONDS`，默认 5 秒
 - `HOC_BASE_URL`，默认 `http://127.0.0.1:8080`
+- `AMR_INSPECTION_SOURCE_REPO`，默认 `amr_warehouse_sim`
+- `AMR_INSPECTION_SOURCE_RUN_ID`，默认 `inspection-run-002`
 
 BFF 保持现有只读路径：
 
@@ -32,6 +38,8 @@ BFF 保持现有只读路径：
 - `GET /api/evaluation/failure-cases`
 
 并增加 `GET /api/evaluation/episodes/{episode_id}` 作为 Episode drill-down。
+Stage 3 另增加 `GET /api/inspection/runs`；前端只把返回的 inspection Run 合并到
+只读 Run registry，不把它伪装成 EvaluationRun，也不触发导航或重新计算 finding。
 Platform 不可达或 contract 错误时返回明确 502；这三个视图不再回退到 mock。
 Models、compute、AMR/MQTT 等不在本阶段范围内。
 

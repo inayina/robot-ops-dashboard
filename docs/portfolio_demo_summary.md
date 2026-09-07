@@ -160,10 +160,12 @@ export AMR_API_BASE_URL=http://127.0.0.1:8000
 uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
 ```
 
-启动前端静态页面：
+启动 Vite 前端页面：
 
 ```bash
-python3 -m http.server 8001
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 浏览器访问：

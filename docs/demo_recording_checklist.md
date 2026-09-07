@@ -32,7 +32,9 @@ AMR_API_BASE_URL=http://127.0.0.1:8010 \
 5. Dashboard frontend：
 
 ```bash
-.venv/bin/python -m http.server 8001 --bind 127.0.0.1
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 6. 打开：

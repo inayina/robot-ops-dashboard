@@ -17,7 +17,9 @@ AMR_API_BASE_URL=http://127.0.0.1:8010 \
 4. 启动 frontend：
 
 ```bash
-.venv/bin/python -m http.server 8001 --bind 127.0.0.1
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 5. 打开 `http://127.0.0.1:8001/frontend/`。

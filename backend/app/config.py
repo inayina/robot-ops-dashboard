@@ -53,6 +53,12 @@ AMR_API_BASE_URL = os.getenv("AMR_API_BASE_URL", "http://127.0.0.1:8000")
 ROBOT_DATA_PLATFORM_BASE_URL = os.getenv(
     "ROBOT_DATA_PLATFORM_BASE_URL", "http://127.0.0.1:9100/data/v1"
 ).rstrip("/")
+AMR_INSPECTION_SOURCE_REPO = os.getenv(
+    "AMR_INSPECTION_SOURCE_REPO", "amr_warehouse_sim"
+).strip() or "amr_warehouse_sim"
+AMR_INSPECTION_SOURCE_RUN_ID = os.getenv(
+    "AMR_INSPECTION_SOURCE_RUN_ID", "inspection-run-002"
+).strip() or "inspection-run-002"
 HOC_BASE_URL = os.getenv("HOC_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "mqtt://127.0.0.1:1883")
 ROBOT_ID = os.getenv("ROBOT_ID", "amr-001")

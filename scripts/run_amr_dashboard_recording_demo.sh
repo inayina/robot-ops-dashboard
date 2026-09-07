@@ -59,7 +59,7 @@ usage() {
 默认录屏流程：
   1. 确保 AMR Mock WMS API 读取：$AMR_DB_PATH
   2. 启动/检查 Dashboard backend：$DASHBOARD_API_BASE_URL
-  3. 启动/检查前端静态页面：$FRONTEND_URL
+  3. 启动/检查 Vite 前端页面：$FRONTEND_URL
   4. 调用 AMR visual demo，按顺序跑四个任务点：
      station_a station_b shelf_1 shelf_2
 
@@ -340,19 +340,25 @@ PY
 
 start_frontend_if_needed() {
   local frontend_html="$LOG_DIR/frontend_index.html"
+  local vite_bin="$DASHBOARD_ROOT/frontend/node_modules/.bin/vite"
 
   if http_get "$FRONTEND_URL" "$frontend_html"; then
-    log "Frontend 静态服务已在运行：$FRONTEND_URL"
+    log "Frontend 服务已在运行：$FRONTEND_URL"
     return 0
   fi
 
-  log "启动前端静态服务：$FRONTEND_URL"
+  if [[ ! -x "$vite_bin" ]]; then
+    log "缺少 Vite：请先在 $DASHBOARD_ROOT/frontend 执行 npm install"
+    return 1
+  fi
+
+  log "启动 Vite 前端服务：$FRONTEND_URL"
   (
-    cd "$DASHBOARD_ROOT"
-    python3 -m http.server "$FRONTEND_PORT" --bind "$FRONTEND_HOST"
+    cd "$DASHBOARD_ROOT/frontend"
+    exec "$vite_bin" --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort
   ) >"$FRONTEND_LOG" 2>&1 &
   STARTED_PIDS+=("$!")
-  wait_for_http "$FRONTEND_URL" "Frontend static server" "$frontend_html"
+  wait_for_http "$FRONTEND_URL" "Vite frontend server" "$frontend_html"
 }
 
 print_recording_urls() {

@@ -78,7 +78,7 @@ usage() {
   --robot-id ID                MQTT payload robot_id，默认：$ROBOT_ID
   --no-mqtt                    不启动/探测本地 MQTT broker
   --no-dashboard               不启动 Dashboard backend
-  --no-frontend                不启动前端静态页面
+  --no-frontend                不启动 Vite 前端页面
   --no-motor-status-bridge     不启动 /motor/status -> MQTT bridge
   --no-motor-cmd-bridge        不启动 robot/motor/cmd -> /motor/cmd bridge
   --send-stop-probe            启动后显式发送一次 stop=true 探针命令
@@ -486,6 +486,8 @@ start_dashboard_backend_if_needed() {
 }
 
 start_frontend_if_needed() {
+  local vite_bin="$DASHBOARD_ROOT/frontend/node_modules/.bin/vite"
+
   if [[ "$START_FRONTEND" != true ]]; then
     return 0
   fi
@@ -496,11 +498,16 @@ start_frontend_if_needed() {
     return 0
   fi
 
-  log "启动前端静态页面：$FRONTEND_URL，日志：$FRONTEND_LOG"
-  setsid bash -lc "
-    cd '$DASHBOARD_ROOT'
-    exec python3 -m http.server '$FRONTEND_PORT'
-  " >"$FRONTEND_LOG" 2>&1 < /dev/null &
+  if [[ ! -x "$vite_bin" ]]; then
+    log "缺少 Vite：请先在 $DASHBOARD_ROOT/frontend 执行 npm install"
+    return 1
+  fi
+
+  log "启动 Vite 前端：$FRONTEND_URL，日志：$FRONTEND_LOG"
+  (
+    cd "$DASHBOARD_ROOT/frontend"
+    exec setsid "$vite_bin" --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort
+  ) >"$FRONTEND_LOG" 2>&1 < /dev/null &
   write_pid_file "$!" "$FRONTEND_PID_FILE"
   wait_for_http "$FRONTEND_URL" "Frontend" "$tmp_file"
 }

@@ -1,3 +1,14 @@
+import { dashboardStore } from "./src/state/dashboardStore";
+import { StatusSocket } from "./src/realtime/statusSocket";
+import {
+  extractImuSnapshotFromRobotStatus,
+  extractImuSnapshotFromStatusMessage,
+  extractMotorSnapshotFromRobotStatus,
+  extractMotorSnapshotFromStatusMessage,
+} from "./src/features/robotStatus/telemetry";
+import { extractWmsTasks, normalizeWmsTask } from "./src/features/wms/model";
+import { buildRunFromEvaluationSummary, mergeEvaluationFailures } from "./src/features/evaluation/model";
+
 const queryParameters = new URLSearchParams(window.location.search);
 const API_BASE_URL =
   window.API_BASE_URL ||
@@ -26,6 +37,7 @@ const DATA_FILES = {
   motorCommand: `${API_BASE_URL}/api/robot/motor/cmd`,
   simPreview: `${API_BASE_URL}/api/sim/preview`,
   evaluationRuns: `${API_BASE_URL}/api/evaluation/runs`,
+  inspectionRuns: `${API_BASE_URL}/api/inspection/runs`,
   evaluationDatasets: `${API_BASE_URL}/api/evaluation/datasets`,
   evaluationModels: `${API_BASE_URL}/api/evaluation/models`,
   evaluationFailureCases: `${API_BASE_URL}/api/evaluation/failure-cases`,
@@ -62,8 +74,6 @@ const EVALUATION_FALLBACK_PAYLOADS = {
     ],
   },
 };
-
-const WMS_TASK_POINTS = ["station_a", "station_b", "dock_a", "start_zone"];
 
 const taskStatusLabel = {
   queued: "Queued",
@@ -300,44 +310,23 @@ const rootNodes = {
   evalComputeMeta: document.querySelector("#evalComputeMeta"),
 };
 
-const cachedPayloads = {
-  tasks: null,
-  wmsTasks: null,
-  devices: null,
-  alerts: null,
-  robotStatus: null,
-  simPreview: null,
-  evaluationRuns: null,
-  evaluationDatasets: null,
-  evaluationModels: null,
-  evaluationFailureCases: null,
-  evaluationCompute: null,
-  evaluationSummary: null,
-};
+const cachedPayloads = new Proxy(Object.create(null), {
+  get: (_target, key) => typeof key === "string" ? dashboardStore.getSection(key) : undefined,
+  set: () => {
+    throw new Error("Dashboard section state is read-only; use dashboardStore.commitSection().");
+  },
+});
 
-let refreshInFlight = false;
-let latestImuSnapshot = null;
 let latestImuRenderOptions = {};
-let latestMotorSnapshot = null;
 let latestMotorRenderOptions = {};
 const imuHistory = [];
 const motorHistory = [];
 const eventStreamKeys = new Set();
-const websocketState = {
-  socket: null,
-  reconnectTimer: null,
-  connected: false,
-  lastMessageAt: null,
-};
-const transportState = {
-  backendConnected: false,
-  streamConnected: false,
-};
+let statusSocket = null;
 const simPreviewRuntime = {
   loadError: false,
 };
 let motorControlsBusy = false;
-let selectedDatasetVersionId = null;
 
 setupWmsTaskControls();
 setupMotorCommandControls();
@@ -361,11 +350,9 @@ window.setInterval(refreshImuDisplay, 1000);
 window.setInterval(refreshMotorDisplay, 1000);
 
 async function init() {
-  if (refreshInFlight) {
+  if (!dashboardStore.tryBeginRefresh()) {
     return;
   }
-
-  refreshInFlight = true;
 
   try {
     const [
@@ -374,6 +361,7 @@ async function init() {
       alertsResult,
       robotStatusResult,
       evaluationRunsResult,
+      inspectionRunsResult,
       evaluationDatasetsResult,
       evaluationModelsResult,
       evaluationFailureCasesResult,
@@ -385,6 +373,7 @@ async function init() {
       fetchJson(DATA_FILES.alerts),
       fetchJson(DATA_FILES.robotStatus),
       fetchJson(DATA_FILES.evaluationRuns),
+      fetchJson(DATA_FILES.inspectionRuns),
       fetchJson(DATA_FILES.evaluationDatasets),
       fetchJson(DATA_FILES.evaluationModels),
       fetchJson(DATA_FILES.evaluationFailureCases),
@@ -397,6 +386,7 @@ async function init() {
       syncSection("devices", devicesResult, renderDevices, rootNodes.systemMeta, "设备状态"),
       syncSection("alerts", alertsResult, renderAlerts, rootNodes.eventStreamMeta, "告警"),
       syncSection("evaluationRuns", evaluationRunsResult, renderEvaluationRuns, rootNodes.evaluationMeta, "评测 run"),
+      syncSection("inspectionRuns", inspectionRunsResult, renderInspectionRuns, rootNodes.evaluationMeta, "巡检 run"),
       syncSection("evaluationDatasets", evaluationDatasetsResult, renderEvaluationDatasets, rootNodes.evaluationMeta, "数据集版本"),
       syncSection("evaluationModels", evaluationModelsResult, renderEvaluationModels, rootNodes.evaluationMeta, "模型版本"),
       syncSection("evaluationFailureCases", evaluationFailureCasesResult, renderEvaluationFailureCases, rootNodes.evalFailureMeta, "失败样本"),
@@ -421,7 +411,7 @@ async function init() {
         : `Dashboard backend unavailable: ${truncateText(failures.join(" | "), 180)}`
     );
   } finally {
-    refreshInFlight = false;
+    dashboardStore.endRefresh();
   }
 }
 
@@ -478,7 +468,13 @@ async function buildHttpError(response, path) {
 
 function syncSection(key, result, renderFn, metaNode, label) {
   if (result.status === "fulfilled") {
-    cachedPayloads[key] = result.value;
+    const accepted = dashboardStore.commitSection(key, result.value, {
+      transport: "http",
+      observedAt: result.value?.generated_at,
+    });
+    if (!accepted) {
+      return "";
+    }
     renderFn(result.value);
     return "";
   }
@@ -495,7 +491,10 @@ function syncSection(key, result, renderFn, metaNode, label) {
 
   const fallbackPayload = getEvaluationFallbackPayload(key);
   if (fallbackPayload) {
-    cachedPayloads[key] = fallbackPayload;
+    dashboardStore.commitSection(key, fallbackPayload, {
+      transport: "demo",
+      observedAt: fallbackPayload.generated_at,
+    });
     renderFn(fallbackPayload, {
       fallback: true,
       errorMessage,
@@ -539,7 +538,13 @@ function getEvaluationFallbackPayload(key) {
 
 function syncRobotStatus(result) {
   if (result.status === "fulfilled") {
-    cachedPayloads.robotStatus = result.value;
+    const accepted = dashboardStore.commitSection("robotStatus", result.value, {
+      transport: "http",
+      observedAt: result.value?.generated_at,
+    });
+    if (!accepted) {
+      return;
+    }
     updateImuSnapshot(extractImuSnapshotFromRobotStatus(result.value), {
       sourceMode: "http",
     });
@@ -573,14 +578,26 @@ function syncRobotStatus(result) {
 }
 
 function updateImuSnapshot(snapshot, options = {}) {
-  latestImuSnapshot = snapshot;
+  const accepted = dashboardStore.commitTelemetry("imu", snapshot, {
+    transport: options.realtime ? "websocket" : options.sourceMode === "http-cache" ? "cache" : "http",
+    observedAt: snapshot?.last_seen || snapshot?.generated_at,
+  });
+  if (!accepted) {
+    return;
+  }
   latestImuRenderOptions = options;
   recordImuHistorySample(snapshot);
   renderImuStatus(snapshot, options);
 }
 
 function updateMotorSnapshot(snapshot, options = {}) {
-  latestMotorSnapshot = snapshot;
+  const accepted = dashboardStore.commitTelemetry("motor", snapshot, {
+    transport: options.realtime ? "websocket" : options.sourceMode === "http-cache" ? "cache" : "http",
+    observedAt: snapshot?.last_seen || snapshot?.generated_at,
+  });
+  if (!accepted) {
+    return;
+  }
   latestMotorRenderOptions = options;
   recordMotorHistorySample(snapshot);
   renderMotorStatus(snapshot, options);
@@ -591,7 +608,7 @@ function refreshImuDisplay() {
     return;
   }
 
-  renderImuStatus(latestImuSnapshot, latestImuRenderOptions);
+  renderImuStatus(dashboardStore.getTelemetry("imu"), latestImuRenderOptions);
 }
 
 function refreshMotorDisplay() {
@@ -599,86 +616,9 @@ function refreshMotorDisplay() {
     return;
   }
 
-  recordMotorHistorySample(latestMotorSnapshot, { repeatStale: true });
-  renderMotorStatus(latestMotorSnapshot, latestMotorRenderOptions);
-}
-
-function extractImuSnapshotFromRobotStatus(payload) {
-  const topicMessage = payload?.topics?.["robot/imu"] || null;
-  const robotStateMessage = payload?.topics?.["robot/state"] || null;
-  const imuPayload = payload?.robot?.imu ?? topicMessage?.payload ?? null;
-  const robotStatePayload = payload?.robot?.state ?? robotStateMessage?.payload ?? null;
-
-  return {
-    topic: "robot/imu",
-    source: payload?.source || "http:/api/robot/status",
-    generated_at: payload?.generated_at || null,
-    connection: payload?.connection || null,
-    message: topicMessage,
-    payload: imuPayload,
-    robot_state: {
-      topic: "robot/state",
-      message: robotStateMessage,
-      payload: robotStatePayload,
-      last_seen: robotStateMessage?.received_at || pickTimestampFromPayload(robotStatePayload),
-    },
-    last_seen: topicMessage?.received_at || pickTimestampFromPayload(imuPayload),
-  };
-}
-
-function extractImuSnapshotFromStatusMessage(payload) {
-  const mqttStatus = payload?.robot?.mqtt || null;
-  const topicMessage = mqttStatus?.topics?.["robot/imu"] || null;
-  const robotStateMessage = mqttStatus?.topics?.["robot/state"] || null;
-  const imuPayload = payload?.imu ?? mqttStatus?.robot?.imu ?? topicMessage?.payload ?? null;
-  const robotStatePayload = mqttStatus?.robot?.state ?? robotStateMessage?.payload ?? null;
-
-  return {
-    topic: "robot/imu",
-    source: mqttStatus?.source || "websocket:/ws/status",
-    generated_at: mqttStatus?.generated_at || payload?.timestamp || null,
-    connection: mqttStatus?.connection || null,
-    message: topicMessage,
-    payload: imuPayload,
-    robot_state: {
-      topic: "robot/state",
-      message: robotStateMessage,
-      payload: robotStatePayload,
-      last_seen: robotStateMessage?.received_at || pickTimestampFromPayload(robotStatePayload),
-    },
-    last_seen: topicMessage?.received_at || pickTimestampFromPayload(imuPayload),
-  };
-}
-
-function extractMotorSnapshotFromRobotStatus(payload) {
-  const topicMessage = payload?.topics?.["robot/motor/status"] || null;
-  const motorPayload = payload?.robot?.motor_status ?? topicMessage?.payload ?? null;
-
-  return {
-    topic: "robot/motor/status",
-    source: payload?.source || "http:/api/robot/status",
-    generated_at: payload?.generated_at || null,
-    connection: payload?.connection || null,
-    message: topicMessage,
-    payload: motorPayload,
-    last_seen: topicMessage?.received_at || pickTimestampFromPayload(motorPayload),
-  };
-}
-
-function extractMotorSnapshotFromStatusMessage(payload) {
-  const mqttStatus = payload?.robot?.mqtt || null;
-  const topicMessage = mqttStatus?.topics?.["robot/motor/status"] || null;
-  const motorPayload = payload?.motor ?? mqttStatus?.robot?.motor_status ?? topicMessage?.payload ?? null;
-
-  return {
-    topic: "robot/motor/status",
-    source: mqttStatus?.source || "websocket:/ws/status",
-    generated_at: mqttStatus?.generated_at || payload?.timestamp || null,
-    connection: mqttStatus?.connection || null,
-    message: topicMessage,
-    payload: motorPayload,
-    last_seen: topicMessage?.received_at || pickTimestampFromPayload(motorPayload),
-  };
+  const snapshot = dashboardStore.getTelemetry("motor");
+  recordMotorHistorySample(snapshot, { repeatStale: true });
+  renderMotorStatus(snapshot, latestMotorRenderOptions);
 }
 
 function renderImuStatus(snapshot, options = {}) {
@@ -2050,8 +1990,12 @@ async function loadWmsTasks() {
 
   try {
     const payload = await fetchJson(DATA_FILES.wmsTasks);
-    cachedPayloads.wmsTasks = payload;
-    renderWmsTasks(payload);
+    if (dashboardStore.commitSection("wmsTasks", payload, {
+      transport: "http",
+      observedAt: payload?.generated_at,
+    })) {
+      renderWmsTasks(payload);
+    }
   } catch (error) {
     const errorMessage = normalizeError(error);
     if (cachedPayloads.wmsTasks) {
@@ -2078,8 +2022,12 @@ async function loadSimPreview() {
 
   try {
     const payload = await fetchJson(DATA_FILES.simPreview);
-    cachedPayloads.simPreview = payload;
-    renderSimPreview(payload);
+    if (dashboardStore.commitSection("simPreview", payload, {
+      transport: "http",
+      observedAt: payload?.last_update_at,
+    })) {
+      renderSimPreview(payload);
+    }
   } catch (error) {
     const errorMessage = normalizeError(error);
     renderSimPreview(
@@ -2172,62 +2120,6 @@ function renderWmsTasks(payload, options = {}) {
   renderWmsTaskMessage(`Last refresh: ${taskCount} tasks`);
 }
 
-function extractWmsTasks(payload) {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-
-  if (Array.isArray(payload?.tasks)) {
-    return payload.tasks;
-  }
-
-  if (Array.isArray(payload?.data)) {
-    return payload.data;
-  }
-
-  return [];
-}
-
-function normalizeWmsTask(task) {
-  const taskName = task.task_name || task.name || task.order_id || "";
-  const taskMeta = parseDashboardTaskName(taskName);
-
-  return {
-    id: task.id || task.task_id || taskName || "-",
-    name: taskName,
-    pickup: task.pickup || task.pickup_station || taskMeta.pickup || "-",
-    dropoff: task.dropoff || task.dropoff_station || taskMeta.dropoff || task.target_name || "-",
-    status: task.status || task.source_status || "-",
-    created_at: task.created_at || task.createdAt || null,
-    updated_at: task.updated_at || task.updatedAt || null,
-  };
-}
-
-function parseDashboardTaskName(taskName) {
-  if (!taskName || !taskName.startsWith("dashboard_")) {
-    return {};
-  }
-
-  const body = taskName.slice("dashboard_".length);
-  for (const pickup of WMS_TASK_POINTS) {
-    const marker = `_${pickup}_to_`;
-    const markerIndex = body.indexOf(marker);
-    if (markerIndex === -1) {
-      continue;
-    }
-
-    const rest = body.slice(markerIndex + marker.length);
-    const dropoff = WMS_TASK_POINTS.find((point) => rest === point || rest.startsWith(`${point}_`));
-    return {
-      task_type: body.slice(0, markerIndex),
-      pickup,
-      dropoff: dropoff || "-",
-    };
-  }
-
-  return {};
-}
-
 function setWmsControlsDisabled(disabled) {
   if (rootNodes.wmsSubmitButton) {
     rootNodes.wmsSubmitButton.disabled = disabled;
@@ -2256,74 +2148,51 @@ function connectStatusWebSocket() {
     renderWebSocketStatus(false, "WebSocket unavailable; HTTP polling fallback is active.");
     return;
   }
-
-  if (websocketState.reconnectTimer) {
-    window.clearTimeout(websocketState.reconnectTimer);
-    websocketState.reconnectTimer = null;
-  }
-
+  statusSocket?.stop();
   renderWebSocketStatus(false, `Connecting status stream: ${WS_STATUS_URL}`);
-
-  const socket = new WebSocket(WS_STATUS_URL);
-  websocketState.socket = socket;
-
-  socket.addEventListener("open", () => {
-    websocketState.connected = true;
-    renderWebSocketStatus(true, `Connected to status stream: ${WS_STATUS_URL}`);
-    appendEventStreamEntry({
-      key: `ws-open-${Date.now()}`,
-      status: "online",
-      title: "Status stream connected",
-      detail: WS_STATUS_URL,
-    });
+  statusSocket = new StatusSocket({
+    url: WS_STATUS_URL,
+    reconnectDelayMs: WS_RECONNECT_DELAY_MS,
+    onOpen: () => {
+      renderWebSocketStatus(true, `Connected to status stream: ${WS_STATUS_URL}`);
+      appendEventStreamEntry({
+        key: `ws-open-${Date.now()}`,
+        status: "online",
+        title: "Status stream connected",
+        detail: WS_STATUS_URL,
+      });
+    },
+    onMessage: handleStatusMessage,
+    onClose: () => {
+      renderWebSocketStatus(false, "Status stream disconnected; HTTP polling fallback is active.");
+      appendEventStreamEntry({
+        key: `ws-close-${Date.now()}`,
+        status: "error",
+        title: "Status stream disconnected",
+        detail: "HTTP polling fallback is active.",
+      });
+    },
+    onError: (message) => {
+      renderWebSocketStatus(false, `Status stream unavailable: ${message}`);
+    },
   });
-
-  socket.addEventListener("message", (event) => {
-    try {
-      const payload = JSON.parse(event.data);
-      handleStatusMessage(payload);
-    } catch (error) {
-      renderWebSocketStatus(false, `Invalid status stream message: ${normalizeError(error)}`);
-    }
-  });
-
-  socket.addEventListener("close", () => {
-    if (websocketState.socket !== socket) {
-      return;
-    }
-
-    websocketState.connected = false;
-    renderWebSocketStatus(false, "Status stream disconnected; HTTP polling fallback is active.");
-    appendEventStreamEntry({
-      key: `ws-close-${Date.now()}`,
-      status: "error",
-      title: "Status stream disconnected",
-      detail: "HTTP polling fallback is active.",
-    });
-    websocketState.reconnectTimer = window.setTimeout(connectStatusWebSocket, WS_RECONNECT_DELAY_MS);
-  });
-
-  socket.addEventListener("error", () => {
-    if (websocketState.socket === socket) {
-      renderWebSocketStatus(false, "Status stream error; HTTP polling fallback is active.");
-    }
-  });
+  statusSocket.start();
 }
 
 function handleStatusMessage(payload) {
-  if (!payload || payload.type !== "dashboard_status") {
-    return;
-  }
-
-  websocketState.lastMessageAt = payload.timestamp || new Date().toISOString();
+  const lastMessageAt = payload.timestamp;
 
   const tasksPayload = {
     generated_at: payload.timestamp,
     source: "websocket:/ws/status",
     data: Array.isArray(payload.tasks) ? payload.tasks : [],
   };
-  cachedPayloads.tasks = tasksPayload;
-  renderTasks(tasksPayload, { realtime: true });
+  if (dashboardStore.commitSection("tasks", tasksPayload, {
+    transport: "websocket",
+    observedAt: payload.timestamp,
+  })) {
+    renderTasks(tasksPayload, { realtime: true });
+  }
 
   const robot = payload.robot || {};
   const devicesPayload = {
@@ -2331,12 +2200,16 @@ function handleStatusMessage(payload) {
     source: robot.source || "websocket:/ws/status",
     data: Array.isArray(robot.devices) ? robot.devices : [],
   };
-  cachedPayloads.devices = devicesPayload;
-  renderDevices(devicesPayload, {
-    realtime: true,
-    robotStatus: robot.status,
-    errorMessage: robot.error,
-  });
+  if (dashboardStore.commitSection("devices", devicesPayload, {
+    transport: "websocket",
+    observedAt: devicesPayload.generated_at,
+  })) {
+    renderDevices(devicesPayload, {
+      realtime: true,
+      robotStatus: robot.status,
+      errorMessage: robot.error,
+    });
+  }
 
   updateImuSnapshot(extractImuSnapshotFromStatusMessage(payload), {
     realtime: true,
@@ -2356,14 +2229,14 @@ function handleStatusMessage(payload) {
   if (robot.status === "disconnected") {
     renderWebSocketStatus(false, "Status stream reports disconnected.");
     appendEventStreamEntry({
-      key: `ws-robot-disconnected-${websocketState.lastMessageAt}`,
+      key: `ws-robot-disconnected-${lastMessageAt}`,
       status: "error",
       title: "Backend disconnected",
       detail: summarizeErrorForDisplay(robot.error || "Status stream disconnected"),
-      timestamp: websocketState.lastMessageAt,
+      timestamp: lastMessageAt,
     });
   } else {
-    renderWebSocketStatus(true, `Latest status stream update: ${formatDate(websocketState.lastMessageAt)}`);
+    renderWebSocketStatus(true, `Latest status stream update: ${formatDate(lastMessageAt)}`);
   }
 }
 
@@ -2716,6 +2589,10 @@ function renderEvaluationRuns(_payload, _options = {}) {
   renderEvaluationLayer();
 }
 
+function renderInspectionRuns(_payload, _options = {}) {
+  renderEvaluationLayer();
+}
+
 function renderEvaluationDatasets(_payload, _options = {}) {
   renderEvaluationLayer();
 }
@@ -2737,7 +2614,11 @@ function renderEvaluationSummary(_payload, _options = {}) {
 }
 
 function renderEvaluationLayer() {
-  const runs = getCachedDataList("evaluationRuns");
+  const selectedDatasetVersionId = dashboardStore.getSelectedDatasetVersionId();
+  const runs = [
+    ...getCachedDataList("evaluationRuns"),
+    ...getCachedDataList("inspectionRuns"),
+  ];
   const datasets = getCachedDataList("evaluationDatasets");
   const models = getCachedDataList("evaluationModels");
   const failures = getCachedDataList("evaluationFailureCases");
@@ -2800,52 +2681,8 @@ function setupEvaluationDrillDown() {
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-dataset-version-id]");
     if (!button) return;
-    selectedDatasetVersionId = button.dataset.datasetVersionId || null;
+    dashboardStore.setSelectedDatasetVersionId(button.dataset.datasetVersionId || null);
     renderEvaluationLayer();
-  });
-}
-
-function buildRunFromEvaluationSummary(summary) {
-  const liveRun = summary?.live_run;
-  if (!isObjectRecord(liveRun)) {
-    return null;
-  }
-
-  return {
-    run_id: liveRun.run_id || summary.run_id,
-    run_type: liveRun.run_type || summary.run_type || "baseline_system_evaluation",
-    scenario: liveRun.scenario || summary.scenario?.description || summary.scenario?.name || "Live dashboard snapshot",
-    robot_id: liveRun.robot_id,
-    task_source: liveRun.task_source,
-    dataset_version: liveRun.dataset_version || summary.dataset_version,
-    model_version: liveRun.model_version || summary.model_version,
-    baseline_version: liveRun.baseline_version || summary.baseline_version || liveRun.model_version || summary.model_version,
-    control_policy: liveRun.control_policy || summary.control_policy || summary.policy_type,
-    status: liveRun.status || summary.status || summary.latest_status,
-    task_total: liveRun.task_total ?? summary.task_total,
-    task_success: liveRun.task_success ?? summary.task_success,
-    task_failed: liveRun.task_failed ?? summary.task_failed,
-    task_success_rate: liveRun.task_success_rate ?? summary.task_success_rate,
-    started_at: liveRun.started_at,
-    finished_at: liveRun.finished_at,
-    latest_task_id: liveRun.latest_task_id,
-    latest_task_route: liveRun.latest_task_route,
-    latest_task_status: liveRun.latest_task_status,
-    result_scope: liveRun.result_scope || "live_dashboard_snapshot_not_model_training",
-    feature_snapshot: liveRun.feature_snapshot || {},
-    quality_checks: liveRun.quality_checks || {},
-  };
-}
-
-function mergeEvaluationFailures(primary, fallback) {
-  const seen = new Set();
-  return [...primary, ...fallback].filter((item) => {
-    const key = item?.failure_case_id || `${item?.failure_type}-${item?.summary}`;
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
   });
 }
 
@@ -2926,6 +2763,8 @@ function renderEvaluationFeatures(run, dataset, model, failures, summary = null)
       ? "baseline_eval"
       : run?.run_type === "mock_evaluation"
       ? "mock_eval"
+      : run?.run_type === "platform_inspection"
+      ? "inspection"
       : "reserved";
 
   setText(rootNodes.evalTaskResult, run?.latest_task_status || (failedCount > 0 ? "mixed" : run ? "success" : "-"));
@@ -2972,6 +2811,7 @@ function renderSystemValidationMetrics(summary, run, usingOfflineMock) {
 }
 
 function renderEvaluationRegistry(datasets, models) {
+  const selectedDatasetVersionId = dashboardStore.getSelectedDatasetVersionId();
   if (rootNodes.evalDatasetList) {
     rootNodes.evalDatasetList.innerHTML = datasets.length
       ? datasets
@@ -3094,7 +2934,7 @@ function isEvaluationOfflineMock() {
 }
 
 function evaluationTagState(runType) {
-  if (runType === "platform_evaluation") {
+  if (runType === "platform_evaluation" || runType === "platform_inspection") {
     return "baseline";
   }
   if (runType === "baseline_system_evaluation") {
@@ -3115,6 +2955,9 @@ function evaluationRunTypeLabel(runType) {
   }
   if (runType === "mock_evaluation") {
     return "mock";
+  }
+  if (runType === "platform_inspection") {
+    return "inspection";
   }
   return "reserved";
 }
@@ -3151,7 +2994,7 @@ function formatNullableMemory(value) {
 }
 
 function renderConnectionStatus(isOnline, message) {
-  transportState.backendConnected = Boolean(isOnline);
+  dashboardStore.setTransportConnected("backend", Boolean(isOnline));
 
   if (rootNodes.dataMode) {
     rootNodes.dataMode.textContent = isOnline ? "Connected" : "Disconnected";
@@ -3282,7 +3125,7 @@ function buildSectionMeta(count, source, options = {}) {
 }
 
 function renderWebSocketStatus(isOnline, message) {
-  transportState.streamConnected = Boolean(isOnline);
+  dashboardStore.setTransportConnected("stream", Boolean(isOnline));
 
   if (rootNodes.wsStatus) {
     rootNodes.wsStatus.textContent = isOnline ? "Connected" : "Disconnected";
@@ -3298,13 +3141,17 @@ function renderWebSocketStatus(isOnline, message) {
 }
 
 function refreshLinkBoard() {
+  const latestImuSnapshot = dashboardStore.getTelemetry("imu");
+  const latestMotorSnapshot = dashboardStore.getTelemetry("motor");
+  const backendConnected = dashboardStore.isTransportConnected("backend");
+  const streamConnected = dashboardStore.isTransportConnected("stream");
   const devices = getLiveDeviceScope(Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : []);
   const mqttConnection = String(cachedPayloads.robotStatus?.connection?.status || "").toLowerCase();
   const imuView = buildImuViewModel(latestImuSnapshot);
   const motorView = buildMotorViewModel(latestMotorSnapshot);
   const hasTaskHttpData = Boolean(cachedPayloads.tasks || cachedPayloads.wmsTasks);
   const mqttState = mqttConnection === "connected" ? "online" : mqttConnection === "connecting" ? "stale" : "unknown";
-  const backendState = transportState.backendConnected ? "online" : "offline";
+  const backendState = backendConnected ? "online" : "offline";
   const microRosSummary = summarizeDeviceGroup(devices, (device) =>
     String(device?.transport || "").toLowerCase() === "micro_ros" ||
     String(device?.transport || "").toLowerCase() === "microros" ||
@@ -3320,8 +3167,8 @@ function refreshLinkBoard() {
       String(device?.device_type || "").toLowerCase() === "bms"
   );
 
-  setHealthNode(rootNodes.linkBackendStatus, transportState.backendConnected ? "Online" : "Offline", transportState.backendConnected ? "online" : "offline");
-  setHealthNode(rootNodes.linkStreamStatus, transportState.streamConnected ? "Online" : "Offline", transportState.streamConnected ? "online" : "offline");
+  setHealthNode(rootNodes.linkBackendStatus, backendConnected ? "Online" : "Offline", backendConnected ? "online" : "offline");
+  setHealthNode(rootNodes.linkStreamStatus, streamConnected ? "Online" : "Offline", streamConnected ? "online" : "offline");
   setHealthNode(rootNodes.linkImuStatus, imuView.hasPayload ? imuView.linkLabel : "Waiting", statusToDataState(imuView.hasPayload ? imuView.linkStatus : "unknown"));
   setText(rootNodes.linkImuLatency, imuView.hasPayload ? imuView.lastUpdateAgo : "--");
   setHealthNode(rootNodes.linkMicroRosStatus, microRosSummary.label, microRosSummary.state);
@@ -3356,16 +3203,19 @@ function refreshLinkBoard() {
   setHealthNode(rootNodes.pipelineMotorEsp32, "ESP32 Motor", motorView.hasPayload ? statusToDataState(motorView.linkStatus) : "unknown");
 
   if (rootNodes.previewMode) {
-    const isOnline = transportState.backendConnected || transportState.streamConnected;
+    const isOnline = backendConnected || streamConnected;
     rootNodes.previewMode.textContent = isOnline ? "Live Monitor" : "Offline Preview";
     rootNodes.previewMode.dataset.state = isOnline ? "online" : "stale";
   }
 }
 
 function refreshMotorControlAvailability() {
+  const latestMotorSnapshot = dashboardStore.getTelemetry("motor");
+  const backendConnected = dashboardStore.isTransportConnected("backend");
+  const streamConnected = dashboardStore.isTransportConnected("stream");
   const motorView = buildMotorViewModel(latestMotorSnapshot);
   const mqttConnection = cachedPayloads.robotStatus?.connection?.status || latestMotorSnapshot?.connection?.status;
-  const backendReachable = Boolean(transportState.backendConnected || transportState.streamConnected || cachedPayloads.robotStatus);
+  const backendReachable = Boolean(backendConnected || streamConnected || cachedPayloads.robotStatus);
   const available = Boolean(backendReachable && (!mqttConnection || mqttConnection === "connected"));
   const disabled = motorControlsBusy || !available;
   setMotorControlsDisabled(disabled);
@@ -3389,6 +3239,8 @@ function refreshMotorControlAvailability() {
 }
 
 function refreshRobotInfo() {
+  const latestImuSnapshot = dashboardStore.getTelemetry("imu");
+  const latestMotorSnapshot = dashboardStore.getTelemetry("motor");
   const tasks = Array.isArray(cachedPayloads.tasks?.data) ? cachedPayloads.tasks.data : [];
   const devices = Array.isArray(cachedPayloads.devices?.data) ? cachedPayloads.devices.data : [];
   const currentTask = selectCurrentTask(tasks);

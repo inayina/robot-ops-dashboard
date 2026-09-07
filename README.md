@@ -22,7 +22,8 @@
 3. **Motor / Encoder bench 链路**：Dashboard explicit command -> `POST /api/robot/motor/cmd` -> MQTT `robot/motor/cmd` -> ESP32 motor bench -> encoder status -> MQTT `robot/motor/status` -> Dashboard。
 4. **System Evaluation & Validation 展示层**：mock / baseline validation files -> Dashboard backend `GET /api/evaluation/*` -> frontend cards，展示 `run_id`、`dataset_version`、`baseline_version`、`control_policy`、任务成功率、Dashboard API、WebSocket、MQTT 遥测、Motor bench 状态与跨仓库证据。
 
-作品集提取主入口见 [docs/portfolio_demo_summary.md](./docs/portfolio_demo_summary.md)，简短摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。机器人数据链路与评测平台说明见 [docs/robot_data_evaluation_platform.md](./docs/robot_data_evaluation_platform.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
+作品集提取主入口见 [docs/portfolio_demo_summary.md](./docs/portfolio_demo_summary.md)，简短摘要见 [docs/portfolio_summary.md](./docs/portfolio_summary.md)。操作臂 / Sim2Real 深度验证见关联仓库 [ros2-moveit-pybullet-bridge](https://github.com/inayina/ros2-moveit-pybullet-bridge)（含 HOC、Policy Runner、LeRobot 联调）。五仓统一投递计划见 [MASTER_PORTFOLIO_PLAN.md](https://github.com/inayina/ros2-moveit-pybullet-bridge/blob/main/docs/portfolio/MASTER_PORTFOLIO_PLAN.md)。机器人数据链路与评测平台说明见 [docs/robot_data_evaluation_platform.md](./docs/robot_data_evaluation_platform.md)。最终 60-90 秒录屏顺序见 [docs/dashboard_demo_storyboard.md](./docs/dashboard_demo_storyboard.md)。
+求职叙事文档（定位 / 能力边界 / 证据与已知问题 / 面试要点）：[docs/portfolio/PROJECT_NARRATIVE.md](./docs/portfolio/PROJECT_NARRATIVE.md)
 
 当前展示口径：
 
@@ -47,12 +48,75 @@
 
 ## Related Repositories / 项目入口
 
-- Main demo portal: [robot-ops-dashboard](./)
+统一作品集（五仓）投递计划：[ros2-moveit-pybullet-bridge · MASTER_PORTFOLIO_PLAN.md](https://github.com/inayina/ros2-moveit-pybullet-bridge/blob/main/docs/portfolio/MASTER_PORTFOLIO_PLAN.md)
+
+- Main demo portal: [robot-ops-dashboard](https://github.com/inayina/robot-ops-dashboard)
   当前仓库，提供统一展示入口，承责任务创建、状态监控、WebSocket 推送、IMU / Motor / Event Stream 可视化。
 - AMR navigation core: [amr_warehouse_navigation](https://github.com/inayina/amr_warehouse_navigation)
   基于 ROS 2 Jazzy + Gazebo Harmonic + Nav2 + Mock WMS，负责固定任务点、任务查询 / 创建 / 执行、导航执行和状态回写。
 - Embedded digital twin core: [ros2-robot-digital-twin](https://github.com/inayina/ros2-robot-digital-twin)
   基于 STM32 + ESP32-S3 + micro-ROS + ROS 2 + MQTT，负责 IMU、robot state、电机状态与 dashboard 联调链路。
+- Manipulation / Sim2Real validation: [ros2-moveit-pybullet-bridge](https://github.com/inayina/ros2-moveit-pybullet-bridge)
+  MoveIt 2 + PyBullet 双源仿真、KL/W1/MMD 分布监控、R0–R3 风险闭环、HOC 控制台与 Policy Runner 系统 benchmark；与 episode-data-lab LeRobot 导出联动。
+- Offline episode data: [robot-arm-episode-data-lab](https://github.com/inayina/robot-arm-episode-data-lab)
+  PyBullet 任务 FSM、episode 采集与 LeRobot v2.1 导出，供 bridge 在线回放与同任务校准。
+
+## 五仓统一架构 / Unified Portfolio Architecture
+
+完整说明（三条 Dashboard 链 + Bridge 闭环细节）见 [ros2-moveit-pybullet-bridge · UNIFIED_ARCHITECTURE.md](https://github.com/inayina/ros2-moveit-pybullet-bridge/blob/main/docs/portfolio/UNIFIED_ARCHITECTURE.md)。
+
+```mermaid
+flowchart TB
+  subgraph L0["L0 · 展示层"]
+    DF["Dashboard Frontend"]
+    HOC["HOC 控制台"]
+    RViz["RViz2 / MoveIt"]
+  end
+
+  subgraph L1["L1 · 聚合 / 桥接层"]
+    DAPI["robot-ops-dashboard<br/>FastAPI · WS · MQTT cache"]
+    HS["hoc_server · WS :8765"]
+  end
+
+  subgraph L2["L2 · 集成协议"]
+    HTTP["HTTP REST"]
+    MQTT["MQTT"]
+    ROS["ROS 2 DDS"]
+  end
+
+  subgraph AMR["AMR · amr_warehouse_navigation"]
+    WMS["Mock WMS"] --> NAV["Nav2 + Gazebo"]
+  end
+
+  subgraph EDGE["边缘 · ros2-robot-digital-twin"]
+    ESP["ESP32 micro-ROS"] --> MB["Motor bench"]
+  end
+
+  subgraph DATA["数据 · robot-arm-episode-data-lab"]
+    LR["LeRobot export"]
+  end
+
+  subgraph BRIDGE["操作臂 · ros2-moveit-pybullet-bridge"]
+    MG["MoveIt 2"] --> PB["pybullet_bridge 双源"]
+    PB --> DM["dist_monitor"] --> RE["risk_engine"]
+    PR["PolicyRunner"] --> PB
+  end
+
+  DF <--> DAPI
+  HOC <--> HS
+  RViz --> MG
+  DAPI <-- HTTP --> WMS
+  DAPI <-- MQTT --> ESP
+  HS <-- ROS --> PB
+  ROS <-- ESP
+  ROS <-- NAV
+  LR --> PB
+  RE --> PB
+  RE --> HS
+  DM --> HS
+```
+
+**读图**：本仓库是 **L1 主展示入口**（左半 HTTP/MQTT 聚合）；右侧 `ros2-moveit-pybullet-bridge` 为操作臂深度验证 Demo，可独立运行。
 
 ## System Layered Architecture / 系统分层架构
 
@@ -341,10 +405,12 @@ export AMR_API_BASE_URL=http://127.0.0.1:8000
 uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
 ```
 
-3. `frontend static server` at `127.0.0.1:8001/frontend/`
+3. `Vite frontend server` at `127.0.0.1:8001/frontend/`
 
 ```bash
-python3 -m http.server 8001
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 浏览器访问：
@@ -450,7 +516,9 @@ uvicorn backend.app.main:app --host 127.0.0.1 --port 9000 --reload
 3. 启动 frontend：
 
 ```bash
-python3 -m http.server 8001
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 8001
 ```
 
 4. 打开页面并创建任务：
@@ -735,7 +803,7 @@ chmod +x scripts/run_amr_dashboard_recording_demo.sh
 - 使用上游 AMR 仓库：`/home/ina/ros2_ws/src/amr_warehouse_sim`
 - 使用 Mock WMS 数据库：`/home/ina/ros2_ws/src/amr_warehouse_sim/data/mock_wms.db`
 - 确保 Dashboard backend 以 `ROBOT_OPS_TASK_SOURCE=amr_http` 读取 `http://127.0.0.1:8000/tasks`
-- 启动或复用前端静态页面：`http://127.0.0.1:8001/frontend/`
+- 启动或复用 Vite 前端页面：`http://127.0.0.1:8001/frontend/`
 - 调用 AMR 仓库已有 visual demo，依次执行 `station_a station_b shelf_1 shelf_2`
 
 录屏前建议先打开：

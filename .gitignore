@@ -15,6 +15,7 @@ htmlcov/
 
 # Node dependencies and local browser/tool output
 node_modules/
+dist/
 playwright-report/
 test-results/
 
